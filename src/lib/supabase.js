@@ -72,10 +72,29 @@ export async function getConfig(id) {
 }
 
 export async function guardarConfigBorrador(cfg) {
-  // Upsert por fecha_desde
+  // Convertir camelCase de la app → snake_case de Supabase
+  const datos = {
+    fecha_desde:    cfg.fecha_desde    || cfg.fechaDesde    || null,
+    fecha_hasta:    cfg.fecha_hasta    || cfg.fechaHasta    || null,
+    fecha_limite:   cfg.fecha_limite   || cfg.fechaLimite   || null,
+    notas:          cfg.notas          || null,
+    dia_examen:     cfg.dia_examen     || cfg.diaExamen     || null,
+    alumnos_examen: cfg.alumnos_examen || cfg.alumnosExamen || [],
+    horas_pista:    cfg.horas_pista    || cfg.horasPista    || {},
+    profesores:     cfg.profesores     || {},
+    vehiculos:      cfg.vehiculos      || {},
+    activa:         false,
+  };
+  // Limpiar undefined/null en arrays
+  if (!Array.isArray(datos.alumnos_examen)) datos.alumnos_examen = [];
+
+  const upsertData = datos.fecha_desde
+    ? datos
+    : (() => { const { fecha_desde, ...rest } = datos; return rest; })();
+
   const { data, error } = await supabase
     .from('configuracion_semanal')
-    .upsert({ ...cfg, activa: false }, { onConflict: 'fecha_desde' })
+    .upsert(datos.fecha_desde ? datos : { ...datos }, { onConflict: 'fecha_desde' })
     .select().single();
   if (error) throw error;
   return data;
