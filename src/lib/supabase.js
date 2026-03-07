@@ -72,29 +72,27 @@ export async function getConfig(id) {
 }
 
 export async function guardarConfigBorrador(cfg) {
-  // Convertir camelCase de la app → snake_case de Supabase
+  // Convertir nombres de la app → snake_case de Supabase
   const datos = {
-    fecha_desde:    cfg.fecha_desde    || cfg.fechaDesde    || null,
-    fecha_hasta:    cfg.fecha_hasta    || cfg.fechaHasta    || null,
-    fecha_limite:   cfg.fecha_limite   || cfg.fechaLimite   || null,
+    fecha_desde:    cfg.fecha_desde    || cfg.fechasSemanaDe  || null,
+    fecha_hasta:    cfg.fecha_hasta    || cfg.fechasSemanaA   || null,
+    fecha_limite:   cfg.fecha_limite   || (cfg.fechaLimite && cfg.horaLimite
+                      ? `${cfg.fechaLimite}T${cfg.horaLimite}:00`
+                      : cfg.fechaLimite || null),
     notas:          cfg.notas          || null,
-    dia_examen:     cfg.dia_examen     || cfg.diaExamen     || null,
-    alumnos_examen: cfg.alumnos_examen || cfg.alumnosExamen || [],
-    horas_pista:    cfg.horas_pista    || cfg.horasPista    || {},
+    dia_examen:     cfg.dia_examen     || cfg.diaExamen       || null,
+    alumnos_examen: cfg.alumnos_examen || cfg.alumnosExamen   || [],
+    horas_pista:    cfg.horas_pista    || cfg.horasPista      || {},
     profesores:     cfg.profesores     || {},
     vehiculos:      cfg.vehiculos      || {},
     activa:         false,
   };
-  // Limpiar undefined/null en arrays
   if (!Array.isArray(datos.alumnos_examen)) datos.alumnos_examen = [];
-
-  const upsertData = datos.fecha_desde
-    ? datos
-    : (() => { const { fecha_desde, ...rest } = datos; return rest; })();
+  if (!datos.fecha_desde) throw new Error("Falta la fecha de inicio de semana");
 
   const { data, error } = await supabase
     .from('configuracion_semanal')
-    .upsert(datos.fecha_desde ? datos : { ...datos }, { onConflict: 'fecha_desde' })
+    .upsert(datos, { onConflict: 'fecha_desde' })
     .select().single();
   if (error) throw error;
   return data;
