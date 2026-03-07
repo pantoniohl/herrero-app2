@@ -728,6 +728,7 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
   const [filtros, setFiltros] = useState({ permiso:"todos", estado:"activos", bono:"todos" });
   const [modal, setModal] = useState(null);
   const [alumnoEditar, setAlumnoEditar] = useState(null);
+  const [importando, setImportando] = useState(false);
   const setF = (k,v) => setFiltros(p=>({...p,[k]:v}));
 
   const filtrados = alumnos.filter(a=>{
@@ -742,6 +743,54 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
     }
     return true;
   });
+
+  // Importar Excel — lee filas desde fila 4 (tras cabecera y ayuda)
+  const importarExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportando(true);
+    try {
+      const { read, utils } = await import("https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs");
+      const buf = await file.arrayBuffer();
+      const wb = read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = utils.sheet_to_json(ws, { header:1, range:3 }); // desde fila 4 (índice 3)
+      const nuevos = [];
+      for (const row of rows) {
+        const nombre = (row[0]||"").toString().trim();
+        const apellidos = (row[1]||"").toString().trim();
+        if (!nombre || !apellidos) continue;
+        const alumno = {
+          nombre,
+          apellidos,
+          telefono: (row[2]||"").toString().trim(),
+          localidad: (row[3]||"Trujillo").toString().trim(),
+          permiso: (row[4]||"B").toString().trim().toUpperCase(),
+          fase: (row[5]||"").toString().trim().toLowerCase() || null,
+          bono: (row[6]||"NO").toString().trim().toUpperCase() === "SI",
+          bono_restantes: row[7] ? parseInt(row[7]) : null,
+          transporte: (row[8]||"NO").toString().trim().toUpperCase() === "SI",
+          max_practicas_semana: row[9] ? parseInt(row[9]) : 6,
+          activo: true,
+          fecha_alta: new Date().toISOString().slice(0,10),
+        };
+        const { data, error } = await supabase.from("alumnos").insert(alumno).select().single();
+        if (!error && data) nuevos.push({ ...data, bonoRestantes: data.bono_restantes, profesorFijo: data.profesor_fijo, cocheAsignado: data.coche_asignado, maxPracticas: data.max_practicas_semana, fechaAlta: data.fecha_alta });
+      }
+      if (nuevos.length > 0) {
+        setAlumnos(prev => [...prev, ...nuevos]);
+        alert(`✅ ${nuevos.length} alumno(s) importado(s) correctamente.`);
+      } else {
+        alert("No se encontraron alumnos válidos en el Excel. Comprueba que los datos empiezan en la fila 4.");
+      }
+    } catch(err) {
+      console.error(err);
+      alert("Error al importar: " + err.message);
+    } finally {
+      setImportando(false);
+      e.target.value = "";
+    }
+  };
 
   const guardar = (alumno) => {
     setAlumnos(prev => prev.find(a=>a.id===alumno.id) ? prev.map(a=>a.id===alumno.id?alumno:a) : [...prev,alumno]);
@@ -795,8 +844,13 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
           </div>
         ))}
       </div>
-      {/* FAB */}
+      {/* FAB nuevo alumno */}
       <button onClick={()=>{setAlumnoEditar(null);setModal("nuevo");}} style={{ position:"fixed", bottom:80, right:16, width:56, height:56, borderRadius:"50%", background:"#C8102E", border:"none", color:"white", fontSize:26, cursor:"pointer", boxShadow:"0 6px 20px rgba(200,16,46,0.35)", zIndex:200 }}>+</button>
+      {/* Botón importar Excel */}
+      <label style={{ position:"fixed", bottom:80, right:82, width:46, height:46, borderRadius:"50%", background:"#1A3A6B", border:"none", color:"white", fontSize:20, cursor:"pointer", boxShadow:"0 4px 14px rgba(26,58,107,0.35)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center" }} title="Importar Excel">
+        {importando ? "⏳" : "📥"}
+        <input type="file" accept=".xlsx,.xls" onChange={importarExcel} style={{ display:"none" }} />
+      </label>
       {/* Modal */}
       {(modal==="nuevo"||modal==="editar") && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:300, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
