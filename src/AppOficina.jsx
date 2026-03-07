@@ -761,10 +761,10 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
       {/* Lista */}
       <div style={{ marginBottom:70 }}>
         {filtrados.map(a=>(
-          <div key={a.id} onClick={()=>{setAlumnoEditar(a);setModal("editar");}} style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", padding:"12px 14px", marginBottom:8, cursor:"pointer", opacity:a.activo?1:0.55 }}>
+          <div key={a.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", padding:"12px 14px", marginBottom:8, opacity:a.activo?1:0.55 }}>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <div style={{ width:36, height:36, borderRadius:"50%", background:a.activo?"#1A3A6B":"#C0C0C0", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{a.nombre[0]}{a.apellidos[0]}</div>
-              <div style={{ flex:1 }}>
+              <div onClick={()=>{setAlumnoEditar(a);setModal("editar");}} style={{ width:36, height:36, borderRadius:"50%", background:a.activo?"#1A3A6B":"#C0C0C0", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, cursor:"pointer", flexShrink:0 }}>{a.nombre[0]}{a.apellidos[0]}</div>
+              <div onClick={()=>{setAlumnoEditar(a);setModal("editar");}} style={{ flex:1, cursor:"pointer" }}>
                 <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos}, {a.nombre}</div>
                 <div style={{ fontSize:12, color:"#7A7A7A" }}>{a.localidad}</div>
               </div>
@@ -772,6 +772,20 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
                 <Badge color={COLOR_PERM[a.permiso]}>{a.permiso}</Badge>
                 {!a.activo && <Badge color="#9A9A9A">Archivado</Badge>}
               </div>
+              <button
+                onClick={async (e)=>{
+                  e.stopPropagation();
+                  if (!window.confirm(`¿Borrar a ${a.nombre} ${a.apellidos} permanentemente? Esta acción no se puede deshacer.`)) return;
+                  try {
+                    await supabase.from("alumnos").delete().eq("id", a.id);
+                    setAlumnos(prev => prev.filter(x => x.id !== a.id));
+                  } catch(err) {
+                    alert("Error al borrar: " + err.message);
+                  }
+                }}
+                style={{ width:32, height:32, borderRadius:"50%", border:"1.5px solid #FFD0D0", background:"#FFF5F5", color:"#C8102E", fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}
+                title="Borrar alumno"
+              >🗑</button>
             </div>
           </div>
         ))}
