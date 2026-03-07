@@ -1,3 +1,4 @@
+// v27 — planning persistente, PDFs HTML, motor B vehículo fijo
 import { useState, useEffect } from "react";
 import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
