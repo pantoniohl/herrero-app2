@@ -754,9 +754,11 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
       const buf = await file.arrayBuffer();
       const wb = read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = utils.sheet_to_json(ws, { header:1, range:3 }); // desde fila 4 (índice 3)
+      const rows = utils.sheet_to_json(ws, { header:1, defval:"" });
+      // Saltar fila 0 (título), fila 1 (cabeceras), fila 2 (ayuda) → empezar en índice 3
+      const dataRows = rows.slice(3);
       const nuevos = [];
-      for (const row of rows) {
+      for (const row of dataRows) {
         const nombre = (row[0]||"").toString().trim();
         const apellidos = (row[1]||"").toString().trim();
         if (!nombre || !apellidos) continue;
