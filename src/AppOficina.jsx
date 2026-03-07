@@ -1265,7 +1265,7 @@ function ModuloRespuestas({ alumnos, tokens, configId }) {
                     <div style={{ fontSize:11, color:"#5A7A5A" }}>{a.localidad||""} · {a.permiso||""}</div>
                   </div>
                   <div style={{ fontSize:11, color:"#2E7D32", fontWeight:600 }}>
-                    {new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
+                    {d.created_at ? new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}) : ""}
                   </div>
                 </div>
                 <div style={{ padding:"10px 14px" }}>
