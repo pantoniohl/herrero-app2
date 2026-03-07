@@ -755,8 +755,9 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
       const wb = read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = utils.sheet_to_json(ws, { header:1, defval:"" });
-      // Saltar fila 0 (título), fila 1 (cabeceras), fila 2 (ayuda) → empezar en índice 3
       const dataRows = rows.slice(3);
+      // DEBUG — quitar tras confirmar que funciona
+      alert("DEBUG: " + rows.length + " filas totales. Primera fila datos: " + JSON.stringify(dataRows[0]));
       const nuevos = [];
       for (const row of dataRows) {
         const nombre = (row[0]||"").toString().trim();
