@@ -1,8 +1,7 @@
 {
   "rewrites": [
     { "source": "/alumno", "destination": "/index.html" },
+    { "source": "/alumno/(.*)", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "buildCommand": "vite build",
-  "framework": "vite"
+  ]
 }

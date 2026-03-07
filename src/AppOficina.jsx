@@ -252,8 +252,9 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
       const limitePista = toMin(configSemanal.horasPista?.[dia] || HORA_MAX);
 
       // Cuántas prácticas puede tener el alumno este día
+      // Trujillo: hasta 3/día | Pueblo: hasta 2/día
       const maxHoy = alumno.permiso === "B"
-        ? (alumno.transporte === "autoescuela" ? 2 : 3)
+        ? (alumno.localidad === "Trujillo" ? 3 : 2)
         : 1;
       let asignadasHoy = 0;
 
