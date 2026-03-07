@@ -517,13 +517,13 @@ export default function AppAlumno() {
       // Guardar en Supabase
       const { error: errDisp } = await supabase
         .from("disponibilidad")
-        .insert({
+        .upsert({
           token_id:           tokenData.tokenId,
           alumno_id:          tokenData.alumno.id,
           config_id:          tokenData.config.id,
           dias:               franjas_disponibles,
           practicas_deseadas: pracs || 2,
-        });
+        }, { onConflict: "alumno_id,config_id" });
       if (errDisp) throw errDisp;
       // Marcar token como usado
       await marcarTokenUsado(tokenData.tokenId);
