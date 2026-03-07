@@ -201,7 +201,7 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
   };
 
   return (
-    <div style={{ minHeight:"100vh", background:"#F7F3EE", fontFamily:"system-ui, sans-serif", paddingBottom:90 }}>
+    <div style={{ minHeight:"100vh", background:"#F7F3EE", fontFamily:"system-ui, sans-serif", paddingBottom:180 }}>
 
       {/* HEADER */}
       <div style={{ background:"white", padding:"14px 20px 12px", borderBottom:"3px solid #1A3A6B", boxShadow:"0 2px 12px rgba(0,0,0,0.08)" }}>
@@ -521,7 +521,7 @@ export default function AppAlumno() {
           token_id:           tokenData.tokenId,
           alumno_id:          tokenData.alumno.id,
           config_id:          tokenData.config.id,
-          franjas_disponibles,
+          dias:               franjas_disponibles,
           practicas_deseadas: pracs || 2,
         });
       if (errDisp) throw errDisp;
@@ -553,7 +553,13 @@ export default function AppAlumno() {
   const cfg = tokenData?.config || {};
   const fechaDesde = cfg.fecha_desde;
   const fechaHasta = cfg.fecha_hasta;
-  const fechaLimite = cfg.fecha_limite;
+  const fechaLimiteRaw = cfg.fecha_limite;
+  const fechaLimite = fechaLimiteRaw
+    ? new Date(fechaLimiteRaw).toLocaleString("es-ES", {
+        weekday:"long", day:"numeric", month:"long",
+        hour:"2-digit", minute:"2-digit"
+      })
+    : "";
   const DIAS_SEMANA_ALU = ["lunes","martes","miercoles","jueves","viernes"];
   const fechasDias = {};
   if (fechaDesde) {

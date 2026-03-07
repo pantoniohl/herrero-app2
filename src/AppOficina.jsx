@@ -1254,7 +1254,7 @@ function ModuloRespuestas({ alumnos, tokens, configId }) {
           <div style={{ fontSize:12, fontWeight:700, color:"#2E7D32", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>✅ Disponibilidades recibidas</div>
           {disponibilidades.map(d => {
             const a = d.alumnos || alumnos.find(al => al.id === d.alumno_id) || {};
-            const franjas = d.franjas_disponibles || {};
+            const franjas = d.dias || {};
             const diasConFranjas = Object.entries(franjas).filter(([,fs]) => fs && fs.length > 0);
             return (
               <div key={d.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #C8E6C9", marginBottom:10, overflow:"hidden" }}>
