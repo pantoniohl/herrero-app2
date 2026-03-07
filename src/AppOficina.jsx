@@ -320,12 +320,17 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
           // Para pesados: buscar vehículo compatible
           if (alumno.permiso !== "B") {
             const esPista = alumno.fase === "pista";
-            const vehCompatibles = Object.entries(VEHICULOS).filter(([, v]) => {
+            let vehCompatibles = Object.entries(VEHICULOS).filter(([, v]) => {
               if (v.permiso !== alumno.permiso) return false;
               if (esPista && v.modalidad === "circ") return false;
               if (!esPista && v.modalidad === "pista") return false;
               return true;
             }).map(([k]) => k);
+
+            // Respetar vehículo preferente del alumno: ponerlo primero
+            if (alumno.cocheAsignado && vehCompatibles.includes(alumno.cocheAsignado)) {
+              vehCompatibles = [alumno.cocheAsignado, ...vehCompatibles.filter(v => v !== alumno.cocheAsignado)];
+            }
 
             let asignadoConVeh = false;
             for (const vehKey of vehCompatibles) {
@@ -385,35 +390,45 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
             if (asignadoConVeh) break;
 
           } else {
-            // Módulo B: no necesita vehículo específico
-            const hueco = elegirHueco(
-              tramosComunes, duracion,
-              ocupacionesProf,
-              capProf
-            );
-            if (hueco) {
-              const entrada = {
-                alumnoId: alumno.id,
-                alumnoNombre: alumno.apellidos + ", " + alumno.nombre,
-                profesor: profKey,
-                vehiculo: null,
-                permiso: "B",
-                fase: null,
-                desde: toHHMM(hueco.desde),
-                hasta: toHHMM(hueco.hasta),
-                duracion,
-                tipo: "circulacion",
-                forzado: false,
-              };
-              planning[dia].push(entrada);
-              getOcup(ocupProf, profKey + "_" + dia).push(hueco);
-              asignadas++;
-              asignadasHoy++;
-              asignado = true;
-              break;
+            // Módulo B: vehículo fijo del alumno (si tiene) o cualquiera disponible
+            const vehB = alumno.cocheAsignado
+              ? [alumno.cocheAsignado]
+              : Object.keys(VEHICULOS_B);
+
+            for (const vehKey of vehB) {
+              const vehConfigDia = configSemanal.vehiculos?.[vehKey]?.[dia] || configSemanal.vehiculos?.[vehKey]?.dias?.[dia];
+              // Si el vehículo no está configurado como "no", proceder
+              if (vehConfigDia && vehConfigDia.estado === "no") continue;
+              let tramosVeh = vehConfigDia ? tramosDisponibles(vehConfigDia) : [{desde:toMin("08:00"),hasta:toMin("21:00")}];
+              const ocupacionesVeh = getOcup(ocupVeh, vehKey + "_" + dia);
+              tramosVeh = restarOcupaciones(tramosVeh, ocupacionesVeh);
+              const tramosFinalesB = intersectarTramos(tramosComunes, tramosVeh);
+              const hueco = elegirHueco(tramosFinalesB, duracion, ocupacionesProf, capProf);
+              if (hueco) {
+                const entrada = {
+                  alumnoId: alumno.id,
+                  alumnoNombre: alumno.apellidos + ", " + alumno.nombre,
+                  profesor: profKey,
+                  vehiculo: vehKey,
+                  permiso: "B",
+                  fase: null,
+                  desde: toHHMM(hueco.desde),
+                  hasta: toHHMM(hueco.hasta),
+                  duracion,
+                  tipo: "circulacion",
+                  forzado: false,
+                };
+                planning[dia].push(entrada);
+                getOcup(ocupProf, profKey + "_" + dia).push(hueco);
+                getOcup(ocupVeh, vehKey + "_" + dia).push(hueco);
+                asignadas++;
+                asignadasHoy++;
+                asignado = true;
+                break;
+              }
             }
+            if (asignado) break;
           }
-        }
 
         if (!asignado) break; // No hay más huecos este día
       }
@@ -967,7 +982,7 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
 
 function FormAlumnoCompacto({ alumno, onGuardar }) {
   const esNuevo = !alumno?.id;
-  const [form, setForm] = useState(alumno || { nombre:"", apellidos:"", telefono:"", localidad:"Trujillo", permiso:"B", fase:null, activo:true, bono:false, bonoRestantes:"", fechaAlta:new Date().toISOString().slice(0,10) });
+  const [form, setForm] = useState(alumno || { nombre:"", apellidos:"", telefono:"", localidad:"Trujillo", permiso:"B", fase:null, activo:true, bono:false, bonoRestantes:"", fechaAlta:new Date().toISOString().slice(0,10), profesorFijo:null, cocheAsignado:null });
   const set = (k,v) => setForm(p=>({...p,[k]:v}));
   const valido = form.nombre.trim() && form.apellidos.trim() && form.telefono.trim();
   return (
@@ -1012,11 +1027,274 @@ function FormAlumnoCompacto({ alumno, onGuardar }) {
           </div>
         </div>
       )}
+      {/* Profesor preferente */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Profesor preferente</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {[{v:null,l:"Auto"}, ...PROFS.map(pk=>({v:pk,l:PROF_LABEL[pk]}))].map(op=>(
+            <button key={String(op.v)} onClick={()=>set("profesorFijo",op.v)} style={{ padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600, border:"1.5px solid "+(form.profesorFijo===op.v?"#1A3A6B":"#E8E0D5"), background:form.profesorFijo===op.v?"#1A3A6B":"white", color:form.profesorFijo===op.v?"white":"#7A7A7A" }}>{op.l}</button>
+          ))}
+        </div>
+      </div>
+      {/* Vehículo asignado */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Vehículo {form.permiso==="B"?"fijo":"preferente"}</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {[{v:null,l:"Auto"}, ...(form.permiso==="B"
+            ? [{v:"audi_a3",l:"Audi A3"},{v:"toyota_auris",l:"Toyota Auris"}]
+            : form.permiso==="C"
+              ? [{v:"renault_amarillo",l:"R.Amarillo"},{v:"renault_blanco",l:"R.Blanco"}]
+              : [{v:"trailer_renault",l:"Tráiler R."},{v:"trailer_mercedes",l:"Tráiler M."}]
+          )].map(op=>(
+            <button key={String(op.v)} onClick={()=>set("cocheAsignado",op.v)} style={{ padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600, border:"1.5px solid "+(form.cocheAsignado===op.v?"#C8102E":"#E8E0D5"), background:form.cocheAsignado===op.v?"#C8102E":"white", color:form.cocheAsignado===op.v?"white":"#7A7A7A" }}>{op.l}</button>
+          ))}
+        </div>
+      </div>
       <button disabled={!valido} onClick={()=>onGuardar({...form,id:form.id||Date.now()})} style={{ width:"100%", padding:14, marginTop:8, background:valido?"#C8102E":"#C0C0C0", color:"white", border:"none", borderRadius:12, fontFamily:"inherit", fontSize:15, fontWeight:700, cursor:valido?"pointer":"not-allowed" }}>
         {esNuevo?"Dar de alta":"Guardar cambios"}
       </button>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════
+// GENERADORES DE PDF (usando jsPDF via CDN)
+// ══════════════════════════════════════════════
+
+function cargarJsPDF() {
+  return new Promise((resolve, reject) => {
+    if (window.jspdf) { resolve(window.jspdf.jsPDF); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function semanaLabel(cfg) {
+  const de = cfg.fechasSemanaDe || "";
+  const a = cfg.fechasSemanaA || "";
+  if (!de) return "Semana";
+  return `Semana del ${de} al ${a}`;
+}
+
+function buildPlanningProfesor(planning, profKey) {
+  const lineas = [];
+  for (const dia of DIAS_SEMANA) {
+    const pracs = (planning[dia]||[]).filter(p => p.profesor === profKey);
+    if (!pracs.length) continue;
+    lineas.push({ tipo:"dia", texto: DIAS_LABEL[dia].toUpperCase() });
+    for (const p of pracs) {
+      lineas.push({ tipo:"practica", texto: `  ${p.desde}–${p.hasta}  ${p.alumnoNombre}`, detalle: `${p.permiso} · ${VEH_LABEL[p.vehiculo]||"Sin vehículo"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min` });
+    }
+  }
+  return lineas;
+}
+
+function buildPlanningAlumno(planning, alumnoId) {
+  const lineas = [];
+  for (const dia of DIAS_SEMANA) {
+    const pracs = (planning[dia]||[]).filter(p => p.alumnoId === alumnoId);
+    if (!pracs.length) continue;
+    lineas.push({ tipo:"dia", texto: DIAS_LABEL[dia].toUpperCase() });
+    for (const p of pracs) {
+      lineas.push({ tipo:"practica", texto: `  ${p.desde}–${p.hasta}`, detalle: `Prof: ${PROF_LABEL[p.profesor]} · ${VEH_LABEL[p.vehiculo]||""} · ${p.tipo==="pista"?"Pista":"Circulación"} · ${p.duracion}min` });
+    }
+  }
+  return lineas;
+}
+
+async function generarPDFGeneral(planning, alumnos, cfg) {
+  try {
+    const JsPDF = await cargarJsPDF();
+    const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+    const W = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    // Cabecera
+    doc.setFillColor(26,58,107);
+    doc.rect(0,0,W,22,"F");
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(14); doc.setFont("helvetica","bold");
+    doc.text("AUTOESCUELA HERRERO", 14, 10);
+    doc.setFontSize(10); doc.setFont("helvetica","normal");
+    doc.text("Planning General · " + semanaLabel(cfg), 14, 17);
+    doc.setTextColor(0,0,0);
+    y = 30;
+
+    for (const profKey of PROFS) {
+      const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
+      if (!todasProf.length) continue;
+
+      if (y > 260) { doc.addPage(); y = 15; }
+
+      // Header profesor
+      const cp = COLOR_PROF[profKey];
+      const r = parseInt(cp.slice(1,3),16), g = parseInt(cp.slice(3,5),16), b = parseInt(cp.slice(5,7),16);
+      doc.setFillColor(r,g,b);
+      doc.rect(10, y, W-20, 8, "F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text(PROF_LABEL[profKey].toUpperCase(), 14, y+5.5);
+      doc.setTextColor(0,0,0);
+      y += 11;
+
+      for (const dia of DIAS_SEMANA) {
+        const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
+        if (!pracs.length) continue;
+
+        doc.setFontSize(9); doc.setFont("helvetica","bold");
+        doc.setTextColor(80,80,80);
+        doc.text(DIAS_LABEL[dia], 14, y); y += 5;
+
+        for (const p of pracs) {
+          if (y > 270) { doc.addPage(); y = 15; }
+          doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(0,0,0);
+          doc.text(`${p.desde}–${p.hasta}`, 18, y);
+          doc.setFont("helvetica","bold");
+          doc.text(p.alumnoNombre, 38, y);
+          doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(100,100,100);
+          doc.text(`${p.permiso} · ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"Pista":"Circ."} · ${p.duracion}min`, 38, y+4);
+          y += 9;
+        }
+        y += 2;
+      }
+      y += 4;
+    }
+
+    doc.save(`planning-general-${cfg.fechasSemanaDe||"semana"}.pdf`);
+  } catch(e) { alert("Error generando PDF: " + e.message); }
+}
+
+async function generarPDFsProfesores(planning, alumnos, cfg) {
+  try {
+    const JsPDF = await cargarJsPDF();
+    for (const profKey of PROFS) {
+      const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
+      if (!todasProf.length) continue;
+
+      const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+      const W = doc.internal.pageSize.getWidth();
+      const cp = COLOR_PROF[profKey];
+      const r = parseInt(cp.slice(1,3),16), g = parseInt(cp.slice(3,5),16), b = parseInt(cp.slice(5,7),16);
+
+      doc.setFillColor(r,g,b);
+      doc.rect(0,0,W,22,"F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(14); doc.setFont("helvetica","bold");
+      doc.text("AUTOESCUELA HERRERO · " + PROF_LABEL[profKey].toUpperCase(), 14, 10);
+      doc.setFontSize(10); doc.setFont("helvetica","normal");
+      doc.text(semanaLabel(cfg), 14, 17);
+      doc.setTextColor(0,0,0);
+
+      const totalMin = todasProf.reduce((a,p)=>a+(p.duracion||0),0);
+      doc.setFontSize(9); doc.setTextColor(80,80,80);
+      doc.text(`Total: ${todasProf.length} prácticas · ${Math.floor(totalMin/60)}h ${totalMin%60}min`, 14, 27);
+
+      let y = 34;
+      for (const dia of DIAS_SEMANA) {
+        const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
+        if (!pracs.length) continue;
+
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFillColor(240,244,255);
+        doc.rect(10, y-4, W-20, 7, "F");
+        doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
+        doc.text(DIAS_LABEL[dia].toUpperCase(), 14, y+1);
+        y += 8;
+
+        for (const p of pracs) {
+          if (y > 270) { doc.addPage(); y = 15; }
+          doc.setFillColor(250,250,250);
+          doc.rect(10, y-3, W-20, 11, "F");
+          doc.setFontSize(9); doc.setFont("helvetica","bold"); doc.setTextColor(0,0,0);
+          doc.text(`${p.desde}–${p.hasta}`, 14, y+2);
+          doc.text(p.alumnoNombre, 36, y+2);
+          doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(100,100,100);
+          const detalle = `${p.permiso} · ${VEH_LABEL[p.vehiculo]||"Sin vehículo"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min`;
+          doc.text(detalle, 36, y+6.5);
+          y += 13;
+        }
+        y += 3;
+      }
+
+      doc.save(`planning-${profKey}-${cfg.fechasSemanaDe||"semana"}.pdf`);
+    }
+  } catch(e) { alert("Error generando PDFs: " + e.message); }
+}
+
+async function generarPDFsAlumnos(planning, alumnos, cfg) {
+  try {
+    const JsPDF = await cargarJsPDF();
+    const alumnosConPracs = alumnos.filter(a =>
+      DIAS_SEMANA.some(d => (planning[d]||[]).some(p=>p.alumnoId===a.id))
+    );
+
+    for (const alumno of alumnosConPracs) {
+      const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+      const W = doc.internal.pageSize.getWidth();
+
+      doc.setFillColor(200,16,46);
+      doc.rect(0,0,W,22,"F");
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(13); doc.setFont("helvetica","bold");
+      doc.text("AUTOESCUELA HERRERO", 14, 10);
+      doc.setFontSize(10); doc.setFont("helvetica","normal");
+      doc.text("Tus prácticas · " + semanaLabel(cfg), 14, 17);
+      doc.setTextColor(0,0,0);
+
+      // Datos alumno
+      doc.setFillColor(247,243,238);
+      doc.rect(10,26,W-20,14,"F");
+      doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
+      doc.text(`${alumno.apellidos}, ${alumno.nombre}`, 14, 33);
+      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(80,80,80);
+      doc.text(`${alumno.localidad} · Permiso ${alumno.permiso}${alumno.fase?" · "+alumno.fase:""}`, 14, 38);
+
+      let y = 48;
+      let totalMin = 0;
+
+      for (const dia of DIAS_SEMANA) {
+        const pracs = (planning[dia]||[]).filter(p=>p.alumnoId===alumno.id);
+        if (!pracs.length) continue;
+
+        if (y > 260) { doc.addPage(); y = 15; }
+        doc.setFillColor(240,244,255);
+        doc.rect(10, y-4, W-20, 7, "F");
+        doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
+        doc.text(DIAS_LABEL[dia].toUpperCase(), 14, y+1);
+        y += 9;
+
+        for (const p of pracs) {
+          totalMin += p.duracion||0;
+          if (y > 270) { doc.addPage(); y = 15; }
+          const cp = COLOR_PROF[p.profesor];
+          const r2=parseInt(cp.slice(1,3),16), g2=parseInt(cp.slice(3,5),16), b2=parseInt(cp.slice(5,7),16);
+          doc.setFillColor(r2,g2,b2);
+          doc.rect(10, y-3, 2, 12, "F");
+          doc.setFillColor(250,250,250);
+          doc.rect(12, y-3, W-22, 12, "F");
+          doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.setTextColor(0,0,0);
+          doc.text(`${p.desde} – ${p.hasta}`, 16, y+2);
+          doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(60,60,60);
+          doc.text(`Profesor: ${PROF_LABEL[p.profesor]}`, 16, y+7);
+          doc.text(`Vehículo: ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"Pista":"Circulación"} · ${p.duracion}min`, 70, y+7);
+          y += 14;
+        }
+        y += 3;
+      }
+
+      // Footer
+      doc.setFontSize(9); doc.setTextColor(100,100,100);
+      doc.text(`Total semana: ${totalMin} min (${Math.floor(totalMin/60)}h ${totalMin%60}min)`, 14, y+4);
+      doc.setFontSize(8);
+      doc.text("Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69", 14, y+10);
+
+      const nombre = (alumno.apellidos+"-"+alumno.nombre).replace(/\s/g,"_").replace(/,/g,"").toLowerCase();
+      doc.save(`practicas-${nombre}-${cfg.fechasSemanaDe||"semana"}.pdf`);
+    }
+  } catch(e) { alert("Error generando PDFs: " + e.message); }
 }
 
 // ══════════════════════════════════════════════
@@ -1114,8 +1392,15 @@ function ModuloPlanning({ cfg, alumnos, configId }) {
           </div>
         )}
 
+        {/* Botones de PDF */}
+        <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+          <button onClick={()=>generarPDFGeneral(planning, alumnos, cfg)} style={{ flex:"1 1 auto", padding:"9px 12px", borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>📄 PDF General</button>
+          <button onClick={()=>generarPDFsProfesores(planning, alumnos, cfg)} style={{ flex:"1 1 auto", padding:"9px 12px", borderRadius:10, border:"1.5px solid #2E7D32", background:"white", color:"#2E7D32", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>👤 PDF por Profesor</button>
+          <button onClick={()=>generarPDFsAlumnos(planning, alumnos, cfg)} style={{ flex:"1 1 auto", padding:"9px 12px", borderRadius:10, border:"1.5px solid #C8102E", background:"white", color:"#C8102E", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>🎓 PDF por Alumno</button>
+        </div>
+
         <div style={{ display:"flex", gap:6, marginBottom:10, overflowX:"auto" }}>
-          {[{k:"dia",l:"📅 Por día"},{k:"profesor",l:"👤 Profesor"},{k:"semanal",l:"🗓 Semanal"}].map(v=>(
+          {[{k:"dia",l:"📅 Por día"},{k:"profesor",l:"👤 Profesor"},{k:"semanal",l:"🗓 Semanal"},{k:"vehiculos",l:"🚗 Vehículos"}].map(v=>(
             <button key={v.k} onClick={()=>setVista(v.k)} style={{ flex:"0 0 auto", padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600, border:"1.5px solid "+(vista===v.k?"#1A3A6B":"#E8E0D5"), background:vista===v.k?"#1A3A6B":"white", color:vista===v.k?"white":"#7A7A7A" }}>{v.l}</button>
           ))}
         </div>
@@ -1184,11 +1469,62 @@ function ModuloPlanning({ cfg, alumnos, configId }) {
           </div>
         )}
 
+        {vista==="vehiculos" && (
+          <div>
+            {Object.keys(VEH_LABEL).map(vk => {
+              const todasPracs = DIAS_SEMANA.flatMap(d =>
+                (planning[d]||[]).filter(p => p.vehiculo === vk).map(p => ({...p, dia:d}))
+              );
+              const totalMin = todasPracs.reduce((acc,p) => acc + (p.duracion||0), 0);
+              const totalH = Math.floor(totalMin/60);
+              const totalM = totalMin % 60;
+              if (todasPracs.length === 0) return null;
+              return (
+                <div key={vk} style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", marginBottom:12, overflow:"hidden" }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"#1A3A6B", padding:"10px 14px" }}>
+                    <div style={{ color:"white", fontWeight:700, fontSize:14 }}>🚗 {VEH_LABEL[vk]}</div>
+                    <div style={{ color:"#A8C4E8", fontSize:12, fontWeight:600 }}>{totalH}h {totalM>0?totalM+"min":""} · {todasPracs.length} prácticas</div>
+                  </div>
+                  {DIAS_SEMANA.map(d => {
+                    const pracs = (planning[d]||[]).filter(p => p.vehiculo === vk);
+                    if (pracs.length === 0) return null;
+                    return (
+                      <div key={d} style={{ borderBottom:"1px solid #F0EBE5", padding:"8px 14px" }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.6px", marginBottom:6 }}>{DIAS_LABEL[d]}</div>
+                        {pracs.map((p,i) => (
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, padding:"6px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid "+(COLOR_PROF[p.profesor]||"#888") }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:700 }}>{p.alumnoNombre}</div>
+                              <div style={{ fontSize:11, color:"#7A7A7A" }}>{p.desde}–{p.hasta} · {p.duracion}min · {PROF_LABEL[p.profesor]}</div>
+                            </div>
+                            <div style={{ display:"flex", gap:4 }}>
+                              {p.tipo==="pista" && <span style={{ fontSize:10, color:"#D4700A", fontWeight:700 }}>🏁Pista</span>}
+                              <span style={{ fontSize:10, color:"#7A7A7A" }}>{p.permiso}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  {/* Horas totales por día */}
+                  <div style={{ padding:"8px 14px", background:"#F7F9FF", display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {DIAS_SEMANA.map(d => {
+                      const min = (planning[d]||[]).filter(p=>p.vehiculo===vk).reduce((a,p)=>a+(p.duracion||0),0);
+                      if (!min) return null;
+                      return <span key={d} style={{ fontSize:10, fontWeight:600, color:"#1A3A6B", background:"#E0EAF8", padding:"3px 8px", borderRadius:20 }}>{DIAS_LABEL[d].slice(0,3)}: {Math.floor(min/60)}h{min%60>0?min%60+"m":""}</span>;
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {modalP && (
           <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
-            <div style={{ background:"white", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 20px 40px" }}>
+            <div style={{ background:"white", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"24px 20px 40px", maxHeight:"90vh", overflowY:"auto" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-                <div style={{ fontSize:17, fontWeight:700 }}>Detalle práctica</div>
+                <div style={{ fontSize:17, fontWeight:700 }}>Editar práctica</div>
                 <button onClick={()=>setModalP(null)} style={{ width:32, height:32, borderRadius:"50%", border:"1.5px solid #E8E0D5", background:"white", cursor:"pointer", fontSize:16 }}>✕</button>
               </div>
               <div style={{ background:COLOR_PROF[modalP.p.profesor]+"11", border:"1px solid "+COLOR_PROF[modalP.p.profesor]+"33", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
@@ -1197,9 +1533,47 @@ function ModuloPlanning({ cfg, alumnos, configId }) {
                 <div style={{ display:"flex", gap:6, marginTop:8 }}>
                   <Badge color={COLOR_PERM[modalP.p.permiso]}>{modalP.p.permiso}</Badge>
                   {modalP.p.tipo==="pista"&&<Badge color="#D4700A">🏁 Pista</Badge>}
+                  <Badge color="#5A7A9A">🚗 {VEH_LABEL[modalP.p.vehiculo]||"Sin vehículo"}</Badge>
+                </div>
+              </div>
+              {/* Cambiar profesor */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Cambiar profesor</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {PROFS.filter(pk => CAPACIDADES[pk]?.includes(modalP.p.permiso)).map(pk=>(
+                    <button key={pk} onClick={()=>setModalP(mp=>({...mp, p:{...mp.p, profesor:pk}}))}
+                      style={{ padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600,
+                        border:"1.5px solid "+(modalP.p.profesor===pk?COLOR_PROF[pk]:"#E8E0D5"),
+                        background:modalP.p.profesor===pk?COLOR_PROF[pk]:"white",
+                        color:modalP.p.profesor===pk?"white":"#7A7A7A" }}>{PROF_LABEL[pk]}</button>
+                  ))}
+                </div>
+              </div>
+              {/* Cambiar vehículo */}
+              <div style={{ marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Cambiar vehículo</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {(modalP.p.permiso==="B"
+                    ? Object.keys(VEHICULOS_B)
+                    : Object.entries(VEHICULOS).filter(([,v])=>v.permiso===modalP.p.permiso).map(([k])=>k)
+                  ).map(vk=>(
+                    <button key={vk} onClick={()=>setModalP(mp=>({...mp, p:{...mp.p, vehiculo:vk}}))}
+                      style={{ padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600,
+                        border:"1.5px solid "+(modalP.p.vehiculo===vk?"#C8102E":"#E8E0D5"),
+                        background:modalP.p.vehiculo===vk?"#C8102E":"white",
+                        color:modalP.p.vehiculo===vk?"white":"#7A7A7A" }}>{VEH_LABEL[vk]}</button>
+                  ))}
                 </div>
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <button onClick={()=>{
+                  setPlanning(p=>{
+                    const n={...p};
+                    n[modalP.dia]=n[modalP.dia].map(x=>x===modalP.p?{...modalP.p, forzado:true}:x);
+                    return n;
+                  });
+                  setModalP(null);
+                }} style={{ padding:12, borderRadius:12, border:"1.5px solid #1A3A6B33", background:"#F0F4FF", color:"#1A3A6B", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>💾 Guardar cambios</button>
                 <button onClick={()=>{setPlanning(p=>{const n={...p};n[modalP.dia]=n[modalP.dia].filter(x=>x!==modalP.p);return n;});setModalP(null);}} style={{ padding:12, borderRadius:12, border:"1.5px solid #C8102E33", background:"#FDF5F5", color:"#C8102E", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>🗑 Eliminar práctica</button>
               </div>
             </div>
