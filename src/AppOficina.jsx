@@ -272,7 +272,7 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
           if (alumno.permiso === "B" && alumno.profesorFijo && pk !== alumno.profesorFijo) return false;
           const caps = CAPACIDADES[pk];
           if (!caps.includes(alumno.permiso)) return false;
-          const profConfig = configSemanal.profesores?.[pk]?.dias?.[dia];
+          const profConfig = configSemanal.profesores?.[pk]?.[dia] || configSemanal.profesores?.[pk]?.dias?.[dia];
           if (!profConfig || profConfig.estado === "no") return false;
           // Pablo: máximo 3 días de prácticas normales
           if (pk === "pablo") {
@@ -1240,7 +1240,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
 
   useEffect(() => {
     cargar();
-    const intervalo = setInterval(cargar, 15000); // polling 15s
+    const intervalo = setInterval(cargar, 15000);
     return () => clearInterval(intervalo);
   }, [configId]);
 
@@ -1353,8 +1353,8 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
         </div>
       )}
 
-      <button onClick={cargar} style={{ width:"100%", marginTop:8, padding:12, borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-        🔄 Actualizar ahora
+      <button onClick={cargar} disabled={cargando} style={{ width:"100%", marginTop:8, padding:12, borderRadius:10, border:"1.5px solid #1A3A6B", background:cargando?"#F0F4FF":"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:cargando?"not-allowed":"pointer" }}>
+        {cargando ? "⏳ Actualizando..." : "🔄 Actualizar ahora"}
       </button>
     </div>
   );
