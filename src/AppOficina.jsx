@@ -480,6 +480,19 @@ const VEH_LABEL   = { renault_amarillo:"R.Amarillo(C)", renault_blanco:"R.Blanco
 const VEHICULOS_PESADOS = ["renault_amarillo","renault_blanco","trailer_renault","trailer_mercedes"];
 
 // ── Estado inicial config semanal ─────────────
+function mergeDeep(base, override) {
+  if (!override) return base;
+  const result = { ...base };
+  for (const key of Object.keys(override)) {
+    if (override[key] && typeof override[key] === 'object' && !Array.isArray(override[key])) {
+      result[key] = mergeDeep(base[key] || {}, override[key]);
+    } else {
+      result[key] = override[key];
+    }
+  }
+  return result;
+}
+
 function configInicial() {
   const profDias = Object.fromEntries(PROFS.map(pk => [pk, Object.fromEntries(DIAS_SEMANA.map(d => [d, { estado:"todo", tramos:[], capBloqueo:{ activo:false, desde:"", hasta:"" }, tipoJornada: pk==="toni"?"completa":null }]))]));
   const vehDias  = Object.fromEntries(VEHICULOS_PESADOS.map(vk => [vk, Object.fromEntries(DIAS_SEMANA.map(d => [d, { estado:"todo", tramos:[], motivo:"" }]))]));
@@ -1396,7 +1409,7 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
 const NAV = [
   { key:"config",      label:"Config",    icon:"⚙️" },
   { key:"alumnos",     label:"Alumnos",   icon:"👥" },
-  { key:"respuestas",  label:"Respuestas",icon:"📨" },
+  { key:"respuestas",  label:"Respuestas",icon:"📬" },
   { key:"planning",    label:"Planning",  icon:"📅" },
   { key:"whatsapp",    label:"WhatsApp",  icon:"💬" },
 ];
@@ -1425,7 +1438,20 @@ export default function AppOficina() {
           fechaAlta: a.fecha_alta,
         })));
         if (configData) {
-          setCfg(configData);
+          const base = configInicial();
+          setCfg({
+            ...base,
+            fechasSemanaDe: configData.fecha_desde || base.fechasSemanaDe,
+            fechasSemanaA:  configData.fecha_hasta  || base.fechasSemanaA,
+            fechaLimite:    configData.fecha_limite ? configData.fecha_limite.slice(0,10) : base.fechaLimite,
+            horaLimite:     configData.fecha_limite ? configData.fecha_limite.slice(11,16) : base.horaLimite,
+            notas:          configData.notas         || base.notas,
+            diaExamen:      configData.dia_examen    || base.diaExamen,
+            alumnosExamen:  configData.alumnos_examen || base.alumnosExamen,
+            horasPista:     configData.horas_pista   ? { ...base.horasPista, ...configData.horas_pista } : base.horasPista,
+            profesores:     configData.profesores    ? mergeDeep(base.profesores, configData.profesores) : base.profesores,
+            vehiculos:      configData.vehiculos     ? mergeDeep(base.vehiculos, configData.vehiculos)   : base.vehiculos,
+          });
           setConfigId(configData.id);
           // Cargar tokens existentes para esta semana
           const { data: toks } = await supabase
