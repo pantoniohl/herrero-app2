@@ -1747,6 +1747,302 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
   );
 }
 
+
+// ══════════════════════════════════════════════
+// MÓDULO 5: INFORMES (PDF visual en navegador)
+// ══════════════════════════════════════════════
+function InformePlanningProfesor({ profKey, planning, cfg }) {
+  const cp = COLOR_PROF[profKey] || "#1A3A6B";
+  const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey).map(p=>({...p,dia:d})));
+  if (!todasProf.length) return null;
+  const totalMin = todasProf.reduce((a,p)=>a+(p.duracion||0),0);
+  return (
+    <div style={{ background:"white", borderRadius:14, border:"1.5px solid "+cp+"33", marginBottom:16, overflow:"hidden", pageBreakInside:"avoid" }}>
+      <div style={{ background:cp, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div>
+          <div style={{ color:"white", fontWeight:800, fontSize:15 }}>👤 {PROF_LABEL[profKey]}</div>
+          <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>{semanaLabel(cfg)}</div>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ color:"white", fontWeight:700, fontSize:16 }}>{todasProf.length}</div>
+          <div style={{ color:"white", opacity:0.8, fontSize:10 }}>prácticas</div>
+          <div style={{ color:"white", fontWeight:600, fontSize:12 }}>{Math.floor(totalMin/60)}h {totalMin%60>0?totalMin%60+"min":""}</div>
+        </div>
+      </div>
+      <div style={{ padding:"10px 14px" }}>
+        {DIAS_SEMANA.map(dia => {
+          const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
+          if (!pracs.length) return null;
+          const minDia = pracs.reduce((a,p)=>a+(p.duracion||0),0);
+          return (
+            <div key={dia} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:cp, textTransform:"uppercase", letterSpacing:"0.7px", borderBottom:"1.5px solid "+cp+"22", paddingBottom:4, marginBottom:6, display:"flex", justifyContent:"space-between" }}>
+                <span>{DIAS_LABEL[dia]}</span>
+                <span style={{ fontWeight:500, opacity:0.7 }}>{Math.floor(minDia/60)}h{minDia%60>0?" "+minDia%60+"min":""}</span>
+              </div>
+              {pracs.map((p,i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F9FF", borderRadius:8, borderLeft:"3px solid "+cp, marginBottom:4 }}>
+                  <div style={{ fontWeight:700, fontSize:13, minWidth:90, color:"#1A1A1A" }}>{p.desde}–{p.hasta}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700, fontSize:13 }}>{p.alumnoNombre}</div>
+                    <div style={{ fontSize:11, color:"#777", marginTop:1 }}>
+                      <Badge color={COLOR_PERM[p.permiso]}>{p.permiso}</Badge>
+                      {" "}{VEH_LABEL[p.vehiculo]||"—"} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InformePlanningAlumno({ alumno, planning, cfg }) {
+  const todasAlumno = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.alumnoId===alumno.id).map(p=>({...p,dia:d})));
+  if (!todasAlumno.length) return null;
+  const totalMin = todasAlumno.reduce((a,p)=>a+(p.duracion||0),0);
+  const iniciales = (alumno.nombre[0]||"")+(alumno.apellidos[0]||"");
+  return (
+    <div style={{ background:"white", borderRadius:14, border:"1.5px solid #E8E0D5", marginBottom:16, overflow:"hidden" }}>
+      <div style={{ background:"#C8102E", padding:"12px 16px", display:"flex", alignItems:"center", gap:12 }}>
+        <div style={{ width:42, height:42, borderRadius:"50%", background:"rgba(255,255,255,0.25)", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15, flexShrink:0 }}>{iniciales}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{alumno.apellidos}, {alumno.nombre}</div>
+          <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>{alumno.localidad} · Permiso {alumno.permiso}{alumno.fase?" · "+alumno.fase:""}</div>
+        </div>
+        <div style={{ textAlign:"right" }}>
+          <div style={{ color:"white", fontWeight:700, fontSize:16 }}>{todasAlumno.length}</div>
+          <div style={{ color:"white", opacity:0.8, fontSize:10 }}>prácticas</div>
+          <div style={{ color:"white", fontWeight:600, fontSize:12 }}>{Math.floor(totalMin/60)}h {totalMin%60>0?totalMin%60+"min":""}</div>
+        </div>
+      </div>
+      <div style={{ padding:"10px 14px" }}>
+        {DIAS_SEMANA.map(dia => {
+          const pracs = (planning[dia]||[]).filter(p=>p.alumnoId===alumno.id);
+          if (!pracs.length) return null;
+          return (
+            <div key={dia} style={{ marginBottom:8 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"#1A3A6B", textTransform:"uppercase", letterSpacing:"0.7px", borderBottom:"1.5px solid #E8E0D5", paddingBottom:4, marginBottom:6 }}>{DIAS_LABEL[dia]}</div>
+              {pracs.map((p,i) => {
+                const cp = COLOR_PROF[p.profesor]||"#555";
+                return (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid "+cp, marginBottom:4 }}>
+                    <div style={{ fontWeight:700, fontSize:13, minWidth:90, color:"#1A1A1A" }}>{p.desde}–{p.hasta}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:cp }}>{PROF_LABEL[p.profesor]}</div>
+                      <div style={{ fontSize:11, color:"#777", marginTop:1 }}>{VEH_LABEL[p.vehiculo]||"—"} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+        <div style={{ marginTop:8, paddingTop:8, borderTop:"1px solid #F0EBE5", fontSize:10, color:"#999", textAlign:"center" }}>
+          Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InformeSemanal({ planning, cfg }) {
+  const totalPracs = DIAS_SEMANA.reduce((a,d)=>a+(planning[d]||[]).length,0);
+  return (
+    <div style={{ background:"white", borderRadius:14, border:"1.5px solid #1A3A6B33", marginBottom:16, overflow:"hidden" }}>
+      <div style={{ background:"#1A3A6B", padding:"12px 16px" }}>
+        <div style={{ color:"white", fontWeight:800, fontSize:15 }}>🗓 Planning Semanal General</div>
+        <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>{semanaLabel(cfg)} · {totalPracs} prácticas totales</div>
+      </div>
+      <div style={{ overflowX:"auto", padding:"10px 8px" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, minWidth:480 }}>
+          <thead>
+            <tr>
+              <th style={{ padding:"6px 8px", background:"#F7F9FF", textAlign:"left", fontSize:10, color:"#5A5A5A", fontWeight:700, borderBottom:"1.5px solid #E8E0D5" }}>HORA</th>
+              {DIAS_SEMANA.map(d=>(
+                <th key={d} style={{ padding:"6px 8px", background:"#F7F9FF", textAlign:"center", fontSize:10, color:"#1A3A6B", fontWeight:700, borderBottom:"1.5px solid #E8E0D5", borderLeft:"1px solid #F0EBE5" }}>
+                  {DIAS_LABEL[d].slice(0,3).toUpperCase()}
+                  <div style={{ fontWeight:500, color:"#9A9A9A" }}>{(planning[d]||[]).length}p</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PROFS.map(pk => {
+              const cp = COLOR_PROF[pk];
+              const tienePracs = DIAS_SEMANA.some(d=>(planning[d]||[]).some(p=>p.profesor===pk));
+              if (!tienePracs) return null;
+              return (
+                <tr key={pk}>
+                  <td style={{ padding:"6px 8px", fontWeight:700, fontSize:11, color:"white", background:cp, whiteSpace:"nowrap" }}>{PROF_LABEL[pk]}</td>
+                  {DIAS_SEMANA.map(d => {
+                    const pracs = (planning[d]||[]).filter(p=>p.profesor===pk);
+                    return (
+                      <td key={d} style={{ padding:"4px 6px", verticalAlign:"top", borderLeft:"1px solid #F0EBE5", borderBottom:"1px solid #F7F3EE", minWidth:80 }}>
+                        {pracs.map((p,i)=>(
+                          <div key={i} style={{ background:cp+"11", borderRadius:5, padding:"3px 5px", marginBottom:2, borderLeft:"2px solid "+cp }}>
+                            <div style={{ fontWeight:700, fontSize:10, color:cp }}>{p.desde}</div>
+                            <div style={{ fontSize:10, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:80 }}>{p.alumnoNombre.split(",")[0]}</div>
+                            <div style={{ fontSize:9, color:"#888" }}>{VEH_LABEL[p.vehiculo]?.split("(")[0]||""}</div>
+                          </div>
+                        ))}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function botonWA(texto, telefono) {
+  if (!telefono) return null;
+  const tel = telefono.replace(/\D/g,"");
+  const url = "https://wa.me/34"+tel+"?text="+encodeURIComponent(texto);
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+       style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"7px 14px", borderRadius:20, background:"#25D366", color:"white", textDecoration:"none", fontFamily:"inherit", fontSize:12, fontWeight:700 }}>
+      📱 Enviar por WhatsApp
+    </a>
+  );
+}
+
+function imprimirSeccion(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><style>"+
+    "body{font-family:Arial,sans-serif;padding:20px;color:#1a1a1a;font-size:12px;}"+
+    "* {box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}"+
+    "@media print{.no-print{display:none}}"+
+    "</style></head><body>"+
+    "<button class='no-print' onclick='window.print()' style='position:fixed;top:10px;right:10px;padding:8px 16px;background:#1A3A6B;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;'>Imprimir PDF</button>"+
+    el.innerHTML+"</body></html>";
+  const blob = new Blob([html],{type:"text/html;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.target = "_blank"; a.rel = "noreferrer";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),15000);
+}
+
+function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
+  const [vista, setVista] = useState("profesores");
+  const [alumnoSel, setAlumnoSel] = useState(null);
+
+  if (!planning) return (
+    <div style={{ textAlign:"center", padding:"60px 20px", color:"#7A7A7A" }}>
+      <div style={{ fontSize:48, marginBottom:12 }}>📋</div>
+      <div style={{ fontSize:15, fontWeight:600, marginBottom:8 }}>Sin planning generado</div>
+      <div style={{ fontSize:13 }}>Genera el planning desde la pestaña Planning para ver los informes.</div>
+    </div>
+  );
+
+  const alumnosConPracs = alumnos.filter(a =>
+    DIAS_SEMANA.some(d => (planning[d]||[]).some(p=>p.alumnoId===a.id))
+  );
+
+  const msgProfesor = (profKey) => {
+    const pracs = DIAS_SEMANA.flatMap(d=>(planning[d]||[]).filter(p=>p.profesor===profKey).map(p=>({...p,dia:d})));
+    if (!pracs.length) return "";
+    let msg = "Hola "+PROF_LABEL[profKey]+" 👋\n\n*Planning "+semanaLabel(cfg)+"*\n\n";
+    for (const dia of DIAS_SEMANA) {
+      const dp = pracs.filter(p=>p.dia===dia);
+      if (!dp.length) continue;
+      msg += "*"+DIAS_LABEL[dia].toUpperCase()+"*\n";
+      dp.forEach(p => { msg += "  "+p.desde+"-"+p.hasta+" → "+p.alumnoNombre+" ("+p.permiso+") "+VEH_LABEL[p.vehiculo]+"\n"; });
+      msg += "\n";
+    }
+    msg += "_Autoescuela Herrero_";
+    return msg;
+  };
+
+  const msgAlumno = (alumno) => {
+    const pracs = DIAS_SEMANA.flatMap(d=>(planning[d]||[]).filter(p=>p.alumnoId===alumno.id).map(p=>({...p,dia:d})));
+    if (!pracs.length) return "";
+    let msg = "Hola "+alumno.nombre+" 👋\n\n*Tus prácticas "+semanaLabel(cfg)+"*\n\n";
+    for (const dia of DIAS_SEMANA) {
+      const dp = pracs.filter(p=>p.dia===dia);
+      if (!dp.length) continue;
+      msg += "*"+DIAS_LABEL[dia].toUpperCase()+"*\n";
+      dp.forEach(p => { msg += "  "+p.desde+"-"+p.hasta+" · Prof: "+PROF_LABEL[p.profesor]+" · "+VEH_LABEL[p.vehiculo]+"\n"; });
+      msg += "\n";
+    }
+    msg += "_Autoescuela Herrero · 688 70 86 69_";
+    return msg;
+  };
+
+  const PROFS_CONFIG = { mamen:"688000001", javi:"688000002", pablo:"688000003", toni:"688000004" };
+
+  return (
+    <div style={{ paddingBottom:180 }}>
+      <div style={{ fontSize:16, fontWeight:800, color:"#1A3A6B", marginBottom:12 }}>📋 Informes · {semanaLabel(cfg)}</div>
+
+      {/* Selector de vista */}
+      <div style={{ display:"flex", gap:6, marginBottom:16, overflowX:"auto" }}>
+        {[{k:"profesores",l:"👤 Profesores"},{k:"alumnos",l:"🎓 Alumnos"},{k:"semanal",l:"🗓 Semanal"}].map(v=>(
+          <button key={v.k} onClick={()=>setVista(v.k)} style={{ flex:"0 0 auto", padding:"8px 14px", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:700, border:"none", background:vista===v.k?"#1A3A6B":"#F0F4FF", color:vista===v.k?"white":"#1A3A6B" }}>{v.l}</button>
+        ))}
+      </div>
+
+      {/* VISTA PROFESORES */}
+      {vista==="profesores" && PROFS.map(pk => {
+        const pracs = DIAS_SEMANA.flatMap(d=>(planning[d]||[]).filter(p=>p.profesor===pk));
+        if (!pracs.length) return null;
+        return (
+          <div key={pk}>
+            <div id={"informe-prof-"+pk}>
+              <InformePlanningProfesor profKey={pk} planning={planning} cfg={cfg} />
+            </div>
+            <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+              <button onClick={()=>imprimirSeccion("informe-prof-"+pk)}
+                style={{ flex:"1 1 auto", padding:"9px 14px", borderRadius:20, border:"1.5px solid "+COLOR_PROF[pk], background:"white", color:COLOR_PROF[pk], fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                🖨️ PDF / Imprimir
+              </button>
+              {botonWA(msgProfesor(pk), PROFS_CONFIG[pk])}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* VISTA ALUMNOS */}
+      {vista==="alumnos" && alumnosConPracs.map(alumno => (
+        <div key={alumno.id}>
+          <div id={"informe-alumno-"+alumno.id}>
+            <InformePlanningAlumno alumno={alumno} planning={planning} cfg={cfg} />
+          </div>
+          <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" }}>
+            <button onClick={()=>imprimirSeccion("informe-alumno-"+alumno.id)}
+              style={{ flex:"1 1 auto", padding:"9px 14px", borderRadius:20, border:"1.5px solid #C8102E", background:"white", color:"#C8102E", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              🖨️ PDF / Imprimir
+            </button>
+            {botonWA(msgAlumno(alumno), alumno.telefono)}
+          </div>
+        </div>
+      ))}
+
+      {/* VISTA SEMANAL */}
+      {vista==="semanal" && (
+        <div>
+          <div id="informe-semanal">
+            <InformeSemanal planning={planning} cfg={cfg} />
+          </div>
+          <button onClick={()=>imprimirSeccion("informe-semanal")}
+            style={{ width:"100%", padding:"11px", borderRadius:20, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:16 }}>
+            🖨️ PDF / Imprimir Planning Completo
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════
 // APP SHELL — OFICINA
 // ══════════════════════════════════════════════
@@ -1755,6 +2051,7 @@ const NAV = [
   { key:"alumnos",     label:"Alumnos",   icon:"👥" },
   { key:"respuestas",  label:"Respuestas",icon:"📬" },
   { key:"planning",    label:"Planning",  icon:"📅" },
+  { key:"informes",    label:"Informes",  icon:"📋" },
   { key:"whatsapp",    label:"WhatsApp",  icon:"💬" },
 ];
 
@@ -1840,6 +2137,7 @@ export default function AppOficina() {
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
         {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
         {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} />}
+        {pantalla==="informes"    && <ModuloInformes planning={planning} alumnos={alumnos} cfg={cfg} tokens={tokens} configId={configId} />}
         {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
       </div>
 
