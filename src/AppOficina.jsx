@@ -1057,244 +1057,151 @@ function FormAlumnoCompacto({ alumno, onGuardar }) {
   );
 }
 
-// ══════════════════════════════════════════════
-// GENERADORES DE PDF (usando jsPDF via CDN)
-// ══════════════════════════════════════════════
 
-function cargarJsPDF() {
-  return new Promise((resolve, reject) => {
-    if (window.jspdf) { resolve(window.jspdf.jsPDF); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s.onload = () => resolve(window.jspdf.jsPDF);
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
+// ══════════════════════════════════════════════
+// GENERADORES DE PDF (ventana HTML imprimible)
+// ══════════════════════════════════════════════
 
 function semanaLabel(cfg) {
   const de = cfg.fechasSemanaDe || "";
-  const a = cfg.fechasSemanaA || "";
-  if (!de) return "Semana";
-  return `Semana del ${de} al ${a}`;
+  const a  = cfg.fechasSemanaA  || "";
+  return de ? `Semana del ${de} al ${a}` : "Semana actual";
 }
 
-function buildPlanningProfesor(planning, profKey) {
-  const lineas = [];
-  for (const dia of DIAS_SEMANA) {
-    const pracs = (planning[dia]||[]).filter(p => p.profesor === profKey);
-    if (!pracs.length) continue;
-    lineas.push({ tipo:"dia", texto: DIAS_LABEL[dia].toUpperCase() });
-    for (const p of pracs) {
-      lineas.push({ tipo:"practica", texto: `  ${p.desde}–${p.hasta}  ${p.alumnoNombre}`, detalle: `${p.permiso} · ${VEH_LABEL[p.vehiculo]||"Sin vehículo"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min` });
+function estilosPDF() {
+  return `
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body { padding: 20px; color: #1a1a1a; font-size: 12px; }
+    h1 { font-size: 18px; color: #1A3A6B; margin-bottom: 4px; }
+    h2 { font-size: 14px; color: #1A3A6B; margin: 16px 0 8px; border-bottom: 2px solid #1A3A6B; padding-bottom: 4px; }
+    h3 { font-size: 12px; color: #555; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .cabecera { background: #1A3A6B; color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .cabecera h1 { color: white; }
+    .cabecera p  { font-size: 11px; opacity: 0.85; margin-top: 4px; }
+    .practica { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: #f7f7f7; border-radius: 6px; border-left: 4px solid #1A3A6B; margin-bottom: 6px; page-break-inside: avoid; }
+    .practica .hora { font-weight: 700; font-size: 13px; min-width: 90px; }
+    .practica .info { flex: 1; }
+    .practica .nombre { font-weight: 700; font-size: 13px; }
+    .practica .detalle { font-size: 11px; color: #666; margin-top: 2px; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 10px; font-weight: 700; margin-right: 4px; }
+    .badge-b   { background: #E3F2FD; color: #1565C0; }
+    .badge-c   { background: #FFF3E0; color: #E65100; }
+    .badge-ce  { background: #F3E5F5; color: #6A1B9A; }
+    .badge-pista { background: #FFF8E1; color: #F57F17; }
+    .total { background: #EEF2FF; padding: 6px 10px; border-radius: 6px; font-size: 11px; color: #3949AB; font-weight: 600; margin-bottom: 10px; }
+    .separador { height: 1px; background: #E0E0E0; margin: 12px 0; }
+    @media print { body { padding: 10px; } .no-print { display: none; } }
+  `;
+}
+
+function colorProf(profKey) {
+  const mapa = { mamen:"#1A6B3A", javi:"#7B2DBF", pablo:"#C8102E", toni:"#1A3A6B" };
+  return mapa[profKey] || "#555";
+}
+
+function abrirVentanaPDF(titulo, htmlContenido) {
+  const win = window.open("", "_blank");
+  if (!win) { alert("Activa las ventanas emergentes para generar PDF"); return; }
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <title>${titulo}</title>
+    <style>${estilosPDF()}</style>
+  </head><body>
+    <button class="no-print" onclick="window.print()" style="position:fixed;top:10px;right:10px;padding:8px 16px;background:#1A3A6B;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;z-index:999;">🖨️ Imprimir / Guardar PDF</button>
+    ${htmlContenido}
+  </body></html>`);
+  win.document.close();
+}
+
+function chipPermiso(permiso) {
+  const cls = permiso==="B"?"badge-b":permiso==="C"?"badge-c":"badge-ce";
+  return `<span class="badge ${cls}">${permiso}</span>`;
+}
+
+function generarPDFGeneral(planning, alumnos, cfg) {
+  let html = `<div class="cabecera"><h1>AUTOESCUELA HERRERO — Planning General</h1><p>${semanaLabel(cfg)}</p></div>`;
+  for (const profKey of ["mamen","javi","pablo","toni"]) {
+    const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
+    if (!todasProf.length) continue;
+    const totalMin = todasProf.reduce((a,p)=>a+(p.duracion||0),0);
+    const cp = colorProf(profKey);
+    html += `<h2 style="color:${cp};border-color:${cp}">👤 ${PROF_LABEL[profKey]} <span style="font-size:11px;font-weight:400">${todasProf.length} prácticas · ${Math.floor(totalMin/60)}h ${totalMin%60}min</span></h2>`;
+    for (const dia of DIAS_SEMANA) {
+      const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
+      if (!pracs.length) continue;
+      html += `<h3>${DIAS_LABEL[dia]}</h3>`;
+      for (const p of pracs) {
+        html += `<div class="practica" style="border-left-color:${cp}">
+          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="info">
+            <div class="nombre">${p.alumnoNombre}</div>
+            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+          </div>
+        </div>`;
+      }
     }
   }
-  return lineas;
+  abrirVentanaPDF("Planning General", html);
 }
 
-function buildPlanningAlumno(planning, alumnoId) {
-  const lineas = [];
-  for (const dia of DIAS_SEMANA) {
-    const pracs = (planning[dia]||[]).filter(p => p.alumnoId === alumnoId);
-    if (!pracs.length) continue;
-    lineas.push({ tipo:"dia", texto: DIAS_LABEL[dia].toUpperCase() });
-    for (const p of pracs) {
-      lineas.push({ tipo:"practica", texto: `  ${p.desde}–${p.hasta}`, detalle: `Prof: ${PROF_LABEL[p.profesor]} · ${VEH_LABEL[p.vehiculo]||""} · ${p.tipo==="pista"?"Pista":"Circulación"} · ${p.duracion}min` });
+function generarPDFsProfesores(planning, alumnos, cfg) {
+  for (const profKey of ["mamen","javi","pablo","toni"]) {
+    const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
+    if (!todasProf.length) continue;
+    const totalMin = todasProf.reduce((a,p)=>a+(p.duracion||0),0);
+    const cp = colorProf(profKey);
+    let html = `<div class="cabecera" style="background:${cp}"><h1>AUTOESCUELA HERRERO · ${PROF_LABEL[profKey].toUpperCase()}</h1><p>${semanaLabel(cfg)}</p></div>`;
+    html += `<div class="total">Total semana: ${todasProf.length} prácticas · ${Math.floor(totalMin/60)}h ${totalMin%60>0?totalMin%60+"min":""}</div>`;
+    for (const dia of DIAS_SEMANA) {
+      const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
+      if (!pracs.length) continue;
+      const minDia = pracs.reduce((a,p)=>a+(p.duracion||0),0);
+      html += `<h2>${DIAS_LABEL[dia]} <span style="font-size:11px;font-weight:400">${Math.floor(minDia/60)}h ${minDia%60>0?minDia%60+"min":""}</span></h2>`;
+      for (const p of pracs) {
+        html += `<div class="practica" style="border-left-color:${cp}">
+          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="info">
+            <div class="nombre">${p.alumnoNombre}</div>
+            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+          </div>
+        </div>`;
+      }
     }
+    abrirVentanaPDF(`Planning ${PROF_LABEL[profKey]}`, html);
   }
-  return lineas;
 }
 
-async function generarPDFGeneral(planning, alumnos, cfg) {
-  try {
-    const JsPDF = await cargarJsPDF();
-    const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-    const W = doc.internal.pageSize.getWidth();
-    let y = 15;
-
-    // Cabecera
-    doc.setFillColor(26,58,107);
-    doc.rect(0,0,W,22,"F");
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(14); doc.setFont("helvetica","bold");
-    doc.text("AUTOESCUELA HERRERO", 14, 10);
-    doc.setFontSize(10); doc.setFont("helvetica","normal");
-    doc.text("Planning General · " + semanaLabel(cfg), 14, 17);
-    doc.setTextColor(0,0,0);
-    y = 30;
-
-    for (const profKey of PROFS) {
-      const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
-      if (!todasProf.length) continue;
-
-      if (y > 260) { doc.addPage(); y = 15; }
-
-      // Header profesor
-      const cp = COLOR_PROF[profKey];
-      const r = parseInt(cp.slice(1,3),16), g = parseInt(cp.slice(3,5),16), b = parseInt(cp.slice(5,7),16);
-      doc.setFillColor(r,g,b);
-      doc.rect(10, y, W-20, 8, "F");
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(10); doc.setFont("helvetica","bold");
-      doc.text(PROF_LABEL[profKey].toUpperCase(), 14, y+5.5);
-      doc.setTextColor(0,0,0);
-      y += 11;
-
-      for (const dia of DIAS_SEMANA) {
-        const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
-        if (!pracs.length) continue;
-
-        doc.setFontSize(9); doc.setFont("helvetica","bold");
-        doc.setTextColor(80,80,80);
-        doc.text(DIAS_LABEL[dia], 14, y); y += 5;
-
-        for (const p of pracs) {
-          if (y > 270) { doc.addPage(); y = 15; }
-          doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(0,0,0);
-          doc.text(`${p.desde}–${p.hasta}`, 18, y);
-          doc.setFont("helvetica","bold");
-          doc.text(p.alumnoNombre, 38, y);
-          doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(100,100,100);
-          doc.text(`${p.permiso} · ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"Pista":"Circ."} · ${p.duracion}min`, 38, y+4);
-          y += 9;
-        }
-        y += 2;
+function generarPDFsAlumnos(planning, alumnos, cfg) {
+  const alumnosConPracs = alumnos.filter(a =>
+    DIAS_SEMANA.some(d => (planning[d]||[]).some(p => p.alumnoId === a.id))
+  );
+  for (const alumno of alumnosConPracs) {
+    const todasAlumno = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.alumnoId===alumno.id));
+    const totalMin = todasAlumno.reduce((a,p)=>a+(p.duracion||0),0);
+    let html = `<div class="cabecera" style="background:#C8102E"><h1>AUTOESCUELA HERRERO</h1><p>Tus prácticas · ${semanaLabel(cfg)}</p></div>`;
+    html += `<div style="background:#F7F3EE;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:16px;font-weight:700;color:#1A3A6B">${alumno.apellidos}, ${alumno.nombre}</div>
+      <div style="font-size:11px;color:#666;margin-top:4px">${alumno.localidad} · Permiso ${alumno.permiso}${alumno.fase ? " · " + alumno.fase : ""}</div>
+    </div>`;
+    html += `<div class="total">Total semana: ${todasAlumno.length} prácticas · ${Math.floor(totalMin/60)}h ${totalMin%60>0?totalMin%60+"min":""}</div>`;
+    for (const dia of DIAS_SEMANA) {
+      const pracs = (planning[dia]||[]).filter(p=>p.alumnoId===alumno.id);
+      if (!pracs.length) continue;
+      html += `<h2>${DIAS_LABEL[dia]}</h2>`;
+      for (const p of pracs) {
+        const cp = colorProf(p.profesor);
+        html += `<div class="practica" style="border-left-color:${cp}">
+          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="info">
+            <div class="nombre" style="color:${cp}">${PROF_LABEL[p.profesor]}</div>
+            <div class="detalle">${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+          </div>
+        </div>`;
       }
-      y += 4;
     }
-
-    doc.save(`planning-general-${cfg.fechasSemanaDe||"semana"}.pdf`);
-  } catch(e) { alert("Error generando PDF: " + e.message); }
-}
-
-async function generarPDFsProfesores(planning, alumnos, cfg) {
-  try {
-    const JsPDF = await cargarJsPDF();
-    for (const profKey of PROFS) {
-      const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
-      if (!todasProf.length) continue;
-
-      const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-      const W = doc.internal.pageSize.getWidth();
-      const cp = COLOR_PROF[profKey];
-      const r = parseInt(cp.slice(1,3),16), g = parseInt(cp.slice(3,5),16), b = parseInt(cp.slice(5,7),16);
-
-      doc.setFillColor(r,g,b);
-      doc.rect(0,0,W,22,"F");
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(14); doc.setFont("helvetica","bold");
-      doc.text("AUTOESCUELA HERRERO · " + PROF_LABEL[profKey].toUpperCase(), 14, 10);
-      doc.setFontSize(10); doc.setFont("helvetica","normal");
-      doc.text(semanaLabel(cfg), 14, 17);
-      doc.setTextColor(0,0,0);
-
-      const totalMin = todasProf.reduce((a,p)=>a+(p.duracion||0),0);
-      doc.setFontSize(9); doc.setTextColor(80,80,80);
-      doc.text(`Total: ${todasProf.length} prácticas · ${Math.floor(totalMin/60)}h ${totalMin%60}min`, 14, 27);
-
-      let y = 34;
-      for (const dia of DIAS_SEMANA) {
-        const pracs = (planning[dia]||[]).filter(p=>p.profesor===profKey);
-        if (!pracs.length) continue;
-
-        if (y > 260) { doc.addPage(); y = 15; }
-        doc.setFillColor(240,244,255);
-        doc.rect(10, y-4, W-20, 7, "F");
-        doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
-        doc.text(DIAS_LABEL[dia].toUpperCase(), 14, y+1);
-        y += 8;
-
-        for (const p of pracs) {
-          if (y > 270) { doc.addPage(); y = 15; }
-          doc.setFillColor(250,250,250);
-          doc.rect(10, y-3, W-20, 11, "F");
-          doc.setFontSize(9); doc.setFont("helvetica","bold"); doc.setTextColor(0,0,0);
-          doc.text(`${p.desde}–${p.hasta}`, 14, y+2);
-          doc.text(p.alumnoNombre, 36, y+2);
-          doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(100,100,100);
-          const detalle = `${p.permiso} · ${VEH_LABEL[p.vehiculo]||"Sin vehículo"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min`;
-          doc.text(detalle, 36, y+6.5);
-          y += 13;
-        }
-        y += 3;
-      }
-
-      doc.save(`planning-${profKey}-${cfg.fechasSemanaDe||"semana"}.pdf`);
-    }
-  } catch(e) { alert("Error generando PDFs: " + e.message); }
-}
-
-async function generarPDFsAlumnos(planning, alumnos, cfg) {
-  try {
-    const JsPDF = await cargarJsPDF();
-    const alumnosConPracs = alumnos.filter(a =>
-      DIAS_SEMANA.some(d => (planning[d]||[]).some(p=>p.alumnoId===a.id))
-    );
-
-    for (const alumno of alumnosConPracs) {
-      const doc = new JsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-      const W = doc.internal.pageSize.getWidth();
-
-      doc.setFillColor(200,16,46);
-      doc.rect(0,0,W,22,"F");
-      doc.setTextColor(255,255,255);
-      doc.setFontSize(13); doc.setFont("helvetica","bold");
-      doc.text("AUTOESCUELA HERRERO", 14, 10);
-      doc.setFontSize(10); doc.setFont("helvetica","normal");
-      doc.text("Tus prácticas · " + semanaLabel(cfg), 14, 17);
-      doc.setTextColor(0,0,0);
-
-      // Datos alumno
-      doc.setFillColor(247,243,238);
-      doc.rect(10,26,W-20,14,"F");
-      doc.setFontSize(13); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
-      doc.text(`${alumno.apellidos}, ${alumno.nombre}`, 14, 33);
-      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(80,80,80);
-      doc.text(`${alumno.localidad} · Permiso ${alumno.permiso}${alumno.fase?" · "+alumno.fase:""}`, 14, 38);
-
-      let y = 48;
-      let totalMin = 0;
-
-      for (const dia of DIAS_SEMANA) {
-        const pracs = (planning[dia]||[]).filter(p=>p.alumnoId===alumno.id);
-        if (!pracs.length) continue;
-
-        if (y > 260) { doc.addPage(); y = 15; }
-        doc.setFillColor(240,244,255);
-        doc.rect(10, y-4, W-20, 7, "F");
-        doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(26,58,107);
-        doc.text(DIAS_LABEL[dia].toUpperCase(), 14, y+1);
-        y += 9;
-
-        for (const p of pracs) {
-          totalMin += p.duracion||0;
-          if (y > 270) { doc.addPage(); y = 15; }
-          const cp = COLOR_PROF[p.profesor];
-          const r2=parseInt(cp.slice(1,3),16), g2=parseInt(cp.slice(3,5),16), b2=parseInt(cp.slice(5,7),16);
-          doc.setFillColor(r2,g2,b2);
-          doc.rect(10, y-3, 2, 12, "F");
-          doc.setFillColor(250,250,250);
-          doc.rect(12, y-3, W-22, 12, "F");
-          doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.setTextColor(0,0,0);
-          doc.text(`${p.desde} – ${p.hasta}`, 16, y+2);
-          doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(60,60,60);
-          doc.text(`Profesor: ${PROF_LABEL[p.profesor]}`, 16, y+7);
-          doc.text(`Vehículo: ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"Pista":"Circulación"} · ${p.duracion}min`, 70, y+7);
-          y += 14;
-        }
-        y += 3;
-      }
-
-      // Footer
-      doc.setFontSize(9); doc.setTextColor(100,100,100);
-      doc.text(`Total semana: ${totalMin} min (${Math.floor(totalMin/60)}h ${totalMin%60}min)`, 14, y+4);
-      doc.setFontSize(8);
-      doc.text("Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69", 14, y+10);
-
-      const nombre = (alumno.apellidos+"-"+alumno.nombre).replace(/\s/g,"_").replace(/,/g,"").toLowerCase();
-      doc.save(`practicas-${nombre}-${cfg.fechasSemanaDe||"semana"}.pdf`);
-    }
-  } catch(e) { alert("Error generando PDFs: " + e.message); }
+    html += `<div class="separador"></div><p style="font-size:10px;color:#999;text-align:center">Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69</p>`;
+    abrirVentanaPDF(`Prácticas ${alumno.apellidos} ${alumno.nombre}`, html);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -1314,9 +1221,7 @@ function ChipPractica({ p, onClick }) {
   );
 }
 
-function ModuloPlanning({ cfg, alumnos, configId }) {
-  const [planning, setPlanning] = useState(null);
-  const [sinAsignar, setSinAsignar] = useState([]);
+function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsignar, setSinAsignar }) {
   const [diaActivo, setDiaActivo] = useState("lunes");
   const [vista, setVista] = useState("dia");
   const [modalP, setModalP] = useState(null);
@@ -1851,7 +1756,9 @@ export default function AppOficina() {
   const [cfg, setCfg] = useState(configInicial());
   const [configId, setConfigId] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
-  const [tokens, setTokens] = useState([]); // tokens generados para la semana activa
+  const [tokens, setTokens] = useState([]);
+  const [planning, setPlanning] = useState(null);
+  const [sinAsignar, setSinAsignar] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -1925,7 +1832,7 @@ export default function AppOficina() {
         {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} />}
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
         {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
-        {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} />}
+        {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} />}
         {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
       </div>
 
