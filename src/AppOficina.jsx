@@ -1270,7 +1270,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
           <div style={{ fontSize:11, color:"#FF9800", fontWeight:600 }}>Pendientes</div>
         </div>
         <div style={{ flex:1, background:"#E3F2FD", borderRadius:12, padding:"12px", textAlign:"center" }}>
-          <div style={{ fontSize:22, fontWeight:700, color:"#1565C0" }}>{tokens.length}</div>
+          <div style={{ fontSize:22, fontWeight:700, color:"#1565C0" }}>{tokensLocales.length}</div>
           <div style={{ fontSize:11, color:"#1976D2", fontWeight:600 }}>Total enviados</div>
         </div>
       </div>
@@ -1345,7 +1345,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
         </div>
       )}
 
-      {tokens.length > 0 && disponibilidades.length === 0 && respondidos.length === 0 && (
+      {tokensLocales.length > 0 && disponibilidades.length === 0 && respondidos.length === 0 && (
         <div style={{ textAlign:"center", padding:"30px 20px", color:"#7A7A7A" }}>
           <div style={{ fontSize:32, marginBottom:8 }}>⏳</div>
           <div style={{ fontSize:14 }}>Esperando respuestas... (actualiza cada 30s)</div>
