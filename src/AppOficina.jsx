@@ -697,7 +697,9 @@ function ModuloConfig({ cfg, setCfg, alumnos, configId, setConfigId, tokens, set
             ))}
           </div>
           {DIAS_SEMANA.map(dia=>{
-            const d = cfg.profesores[profActivo][dia];
+            const DEFAULT_DIA_PROF = { estado:"todo", tramos:[], capBloqueo:{ activo:false, desde:"", hasta:"" }, tipoJornada: profActivo==="toni"?"completa":null };
+            const raw = (cfg.profesores?.[profActivo]?.[dia]) || {};
+            const d = { ...DEFAULT_DIA_PROF, ...raw, capBloqueo: { ...DEFAULT_DIA_PROF.capBloqueo, ...(raw.capBloqueo||{}) } };
             const cp = COLOR_PROF[profActivo];
             return (
               <div key={dia} style={{ background:"white", borderRadius:12, border:"1.5px solid "+(d.estado==="no"?"#F5C4C4":"#E8E0D5"), marginBottom:10, overflow:"hidden" }}>
@@ -746,7 +748,9 @@ function ModuloConfig({ cfg, setCfg, alumnos, configId, setConfigId, tokens, set
             ))}
           </div>
           {DIAS_SEMANA.map(dia=>{
-            const d = cfg.vehiculos[vehActivo][dia];
+            const DEFAULT_DIA_VEH = { estado:"todo", tramos:[], motivo:"" };
+            const rawv = (cfg.vehiculos?.[vehActivo]?.[dia]) || {};
+            const d = { ...DEFAULT_DIA_VEH, ...rawv };
             return (
               <div key={dia} style={{ background:"white", borderRadius:12, border:"1.5px solid "+(d.estado==="no"?"#F5C4C4":"#E8E0D5"), marginBottom:10, overflow:"hidden" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:d.estado==="no"?"#FDF5F5":"#F7F3EE", borderBottom:"1px solid #F0EBE5" }}>
