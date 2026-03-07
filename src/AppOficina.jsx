@@ -304,8 +304,8 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
         });
 
         for (const profKey of profesoresCandidatos) {
-          const profConfigDia = configSemanal.profesores[profKey].dias[dia];
-          const capProf = configSemanal.profesores[profKey].capBloqueo || profConfigDia.capBloqueo;
+          const profConfigDia = configSemanal.profesores[profKey]?.[dia] || configSemanal.profesores[profKey]?.dias?.[dia];
+          const capProf = profConfigDia?.capBloqueo;
 
           // Tramos libres del profesor
           let tramosProf = tramosDisponibles(profConfigDia);
@@ -329,7 +329,7 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
 
             let asignadoConVeh = false;
             for (const vehKey of vehCompatibles) {
-              const vehConfigDia = configSemanal.vehiculos?.[vehKey]?.dias?.[dia];
+              const vehConfigDia = configSemanal.vehiculos?.[vehKey]?.[dia] || configSemanal.vehiculos?.[vehKey]?.dias?.[dia];
               if (!vehConfigDia || vehConfigDia.estado === "no") continue;
 
               let tramosVeh = tramosDisponibles(vehConfigDia);
@@ -1244,8 +1244,9 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
     return () => clearInterval(intervalo);
   }, [configId]);
 
-  const pendientes = tokensLocales.filter(t => !t.usado);
-  const respondidos = tokensLocales.filter(t => t.usado);
+  const alumnosQueRespondieron = new Set(disponibilidades.map(d => d.alumno_id));
+  const pendientes = tokensLocales.filter(t => !alumnosQueRespondieron.has(t.alumno_id));
+  const respondidos = tokensLocales.filter(t => alumnosQueRespondieron.has(t.alumno_id));
   const DIAS_L = { lunes:"Lun", martes:"Mar", miercoles:"Mié", jueves:"Jue", viernes:"Vie", sabado:"Sáb" };
   const FRANJAS_L = { manana:"Mañana", tarde:"Tarde", noche:"Noche" };
 
