@@ -756,8 +756,6 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = utils.sheet_to_json(ws, { header:1, defval:"" });
       const dataRows = rows.slice(3);
-      // DEBUG — quitar tras confirmar que funciona
-      alert("DEBUG: " + rows.length + " filas totales. Primera fila datos: " + JSON.stringify(dataRows[0]));
       const nuevos = [];
       for (const row of dataRows) {
         const nombre = (row[0]||"").toString().trim();
@@ -778,7 +776,8 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
           fecha_alta: new Date().toISOString().slice(0,10),
         };
         const { data, error } = await supabase.from("alumnos").insert(alumno).select().single();
-        if (!error && data) nuevos.push({ ...data, bonoRestantes: data.bono_restantes, profesorFijo: data.profesor_fijo, cocheAsignado: data.coche_asignado, maxPracticas: data.max_practicas_semana, fechaAlta: data.fecha_alta });
+        if (error) { console.error("Error insert:", error); throw new Error(error.message); }
+        if (data) nuevos.push({ ...data, bonoRestantes: data.bono_restantes, profesorFijo: data.profesor_fijo, cocheAsignado: data.coche_asignado, maxPracticas: data.max_practicas_semana, fechaAlta: data.fecha_alta });
       }
       if (nuevos.length > 0) {
         setAlumnos(prev => [...prev, ...nuevos]);
