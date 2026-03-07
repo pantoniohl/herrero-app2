@@ -1102,19 +1102,24 @@ function colorProf(profKey) {
 }
 
 function abrirVentanaPDF(titulo, htmlContenido) {
-  const win = window.open("", "_blank");
-  if (!win) { alert("Activa las ventanas emergentes para generar PDF"); return; }
-  win.document.write(`<!DOCTYPE html><html><head>
-    <meta charset="utf-8">
-    <title>${titulo}</title>
-    <style>${estilosPDF()}</style>
-  </head><body>
-    <button class="no-print" onclick="window.print()" style="position:fixed;top:10px;right:10px;padding:8px 16px;background:#1A3A6B;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;z-index:999;">🖨️ Imprimir / Guardar PDF</button>
-    ${htmlContenido}
-  </body></html>`);
-  win.document.close();
+  const estilos = estilosPDF();
+  const btnStyle = "position:fixed;top:10px;right:10px;padding:8px 16px;background:#1A3A6B;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;z-index:999;";
+  const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + titulo + "</title><style>" + estilos + "</style></head><body>"
+    + "<button class=\"no-print\" onclick=\"window.print()\" style=\"" + btnStyle + "\">Imprimir / Guardar PDF</button>"
+    + htmlContenido + "</body></html>";
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = titulo.replace(/[^a-zA-Z0-9 ]/g, "").replace(/\s+/g, "-") + ".html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
 }
-
 function chipPermiso(permiso) {
   const cls = permiso==="B"?"badge-b":permiso==="C"?"badge-c":"badge-ce";
   return `<span class="badge ${cls}">${permiso}</span>`;
