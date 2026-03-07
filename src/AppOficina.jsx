@@ -1362,23 +1362,29 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
 
 function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
   const [busqueda, setBusqueda] = useState("");
+  const [alumnosRespondieron, setAlumnosRespondieron] = useState(new Set());
   const BASE_URL = window.location.origin;
 
-  // Polling cada 30s para actualizar estado ✅/⏳
+  // Polling cada 15s para actualizar estado ✅/⏳
   useEffect(() => {
     if (!configId) return;
     const actualizar = async () => {
       try {
-        const { data } = await supabase
-          .from("tokens_alumno")
-          .select("*, alumnos(nombre, apellidos, telefono)")
-          .eq("config_id", configId);
-        if (data) setTokens(data);
+        const [toksRes, dispRes] = await Promise.all([
+          supabase.from("tokens_alumno").select("*, alumnos(nombre, apellidos, telefono)").eq("config_id", configId),
+          supabase.from("disponibilidad").select("alumno_id").eq("config_id", configId),
+        ]);
+        if (toksRes.data) setTokens(toksRes.data);
+        if (dispRes.data) setAlumnosRespondieron(new Set(dispRes.data.map(d => d.alumno_id)));
       } catch(e) { console.error(e); }
     };
-    const intervalo = setInterval(actualizar, 30000);
+    actualizar(); // cargar inmediatamente
+    const intervalo = setInterval(actualizar, 15000);
     return () => clearInterval(intervalo);
   }, [configId]);
+
+  // helper: ha respondido = tiene disponibilidad guardada
+  const haRespondido = (alumnoId) => alumnosRespondieron.has(alumnoId);
 
   // Formato semana desde tokens si hay config activa
   const semanaLabel = () => {
@@ -1418,26 +1424,27 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
         <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar alumno..." style={{ flex:1, border:"none", background:"transparent", fontFamily:"inherit", fontSize:14, outline:"none" }} />
       </div>
       <div style={{ fontSize:12, color:"#7A7A7A", marginBottom:12 }}>
-        {tokens.filter(t=>t.usado).length}/{tokens.length} alumnos han enviado su disponibilidad
+        {tokens.filter(t=>haRespondido(t.alumno_id)).length}/{tokens.length} alumnos han enviado su disponibilidad
       </div>
       {filtrados.map(t => {
         const a = t.alumno;
+        const respondido = haRespondido(t.alumno_id);
         const telefono = (a.telefono||"").replace(/\D/g,"");
         const mensaje = genMensaje(a, t.token);
         const waUrl = `https://wa.me/34${telefono}?text=${encodeURIComponent(mensaje)}`;
         return (
-          <div key={t.id} style={{ background:"white", borderRadius:12, border:"1.5px solid "+(t.usado?"#C8E6C9":"#E8E0D5"), marginBottom:10, overflow:"hidden" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:t.usado?"#F1F8E9":"#F7F3EE", borderBottom:"1px solid #F0EBE5" }}>
-              <div style={{ width:34, height:34, borderRadius:"50%", background:t.usado?"#2E7D32":"#1A3A6B", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{a.nombre[0]}{a.apellidos[0]}</div>
+          <div key={t.id} style={{ background:"white", borderRadius:12, border:"1.5px solid "+(respondido?"#C8E6C9":"#E8E0D5"), marginBottom:10, overflow:"hidden" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:respondido?"#F1F8E9":"#F7F3EE", borderBottom:"1px solid #F0EBE5" }}>
+              <div style={{ width:34, height:34, borderRadius:"50%", background:respondido?"#2E7D32":"#1A3A6B", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{a.nombre[0]}{a.apellidos[0]}</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos}, {a.nombre}</div>
                 <div style={{ fontSize:12, color:"#7A7A7A" }}>{a.localidad} · {a.permiso}</div>
               </div>
-              <span style={{ fontSize:11, fontWeight:700, color:t.usado?"#2E7D32":"#E65100", background:t.usado?"#E8F5E9":"#FFF3E0", padding:"3px 8px", borderRadius:20 }}>
-                {t.usado?"✅ Enviado":"⏳ Pendiente"}
+              <span style={{ fontSize:11, fontWeight:700, color:respondido?"#2E7D32":"#E65100", background:respondido?"#E8F5E9":"#FFF3E0", padding:"3px 8px", borderRadius:20 }}>
+                {respondido?"✅ Enviado":"⏳ Pendiente"}
               </span>
             </div>
-            {!t.usado && (
+            {!respondido && (
               <div style={{ padding:"10px 14px" }}>
                 <div style={{ background:"#E9F5E1", borderRadius:10, padding:"10px", fontSize:11, lineHeight:1.7, whiteSpace:"pre-wrap", maxHeight:90, overflowY:"auto", color:"#2A2A2A" }}>
                   {mensaje}
