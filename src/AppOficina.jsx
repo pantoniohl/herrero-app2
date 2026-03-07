@@ -1,4 +1,4 @@
-// v30b — Informes PDF + pestaña Informes + teléfonos profesores
+// v30b — Informes PDF visuales + pestaña Informes + teléfonos profesores
 import { useState, useEffect } from "react";
 import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
