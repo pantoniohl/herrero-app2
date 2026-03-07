@@ -1158,9 +1158,163 @@ function ModuloPlanning({ cfg, alumnos }) {
 // ══════════════════════════════════════════════
 // MÓDULO 4: WHATSAPP (compacto)
 // ══════════════════════════════════════════════
-function ModuloWhatsApp({ alumnos, tokens }) {
+
+// ══════════════════════════════════════════════
+// MÓDULO RESPUESTAS
+// ══════════════════════════════════════════════
+function ModuloRespuestas({ alumnos, tokens, configId }) {
+  const [disponibilidades, setDisponibilidades] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  const cargar = async () => {
+    if (!configId) { setCargando(false); return; }
+    try {
+      const data = await getDisponibilidades(configId);
+      setDisponibilidades(data || []);
+    } catch(e) { console.error(e); }
+    finally { setCargando(false); }
+  };
+
+  useEffect(() => {
+    cargar();
+    const intervalo = setInterval(cargar, 30000); // polling 30s
+    return () => clearInterval(intervalo);
+  }, [configId]);
+
+  const pendientes = tokens.filter(t => !t.usado);
+  const respondidos = tokens.filter(t => t.usado);
+  const DIAS_L = { lunes:"Lun", martes:"Mar", miercoles:"Mié", jueves:"Jue", viernes:"Vie", sabado:"Sáb" };
+  const FRANJAS_L = { manana:"Mañana", tarde:"Tarde", noche:"Noche" };
+
+  if (!configId) return (
+    <div style={{ textAlign:"center", padding:"40px 20px", color:"#7A7A7A" }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>📨</div>
+      <div style={{ fontSize:15, fontWeight:600, marginBottom:8 }}>Sin semana activa</div>
+      <div style={{ fontSize:13 }}>Activa una semana desde Config para ver las respuestas.</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Contador */}
+      <div style={{ display:"flex", gap:10, marginBottom:14 }}>
+        <div style={{ flex:1, background:"#E8F5E9", borderRadius:12, padding:"12px", textAlign:"center" }}>
+          <div style={{ fontSize:22, fontWeight:700, color:"#2E7D32" }}>{respondidos.length}</div>
+          <div style={{ fontSize:11, color:"#4CAF50", fontWeight:600 }}>Han respondido</div>
+        </div>
+        <div style={{ flex:1, background:"#FFF3E0", borderRadius:12, padding:"12px", textAlign:"center" }}>
+          <div style={{ fontSize:22, fontWeight:700, color:"#E65100" }}>{pendientes.length}</div>
+          <div style={{ fontSize:11, color:"#FF9800", fontWeight:600 }}>Pendientes</div>
+        </div>
+        <div style={{ flex:1, background:"#E3F2FD", borderRadius:12, padding:"12px", textAlign:"center" }}>
+          <div style={{ fontSize:22, fontWeight:700, color:"#1565C0" }}>{tokens.length}</div>
+          <div style={{ fontSize:11, color:"#1976D2", fontWeight:600 }}>Total enviados</div>
+        </div>
+      </div>
+
+      {/* Pendientes */}
+      {pendientes.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:"#E65100", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>⏳ Pendientes de respuesta</div>
+          {pendientes.map(t => {
+            const a = alumnos.find(al => al.id === t.alumno_id) || t.alumnos || {};
+            return (
+              <div key={t.id} style={{ background:"#FFF8F0", borderRadius:10, border:"1.5px solid #FFE0B2", padding:"10px 14px", marginBottom:6, display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ width:32, height:32, borderRadius:"50%", background:"#FF9800", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, flexShrink:0 }}>{(a.nombre||"?")[0]}{(a.apellidos||"?")[0]}</div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos||"–"}, {a.nombre||"–"}</div>
+                  <div style={{ fontSize:11, color:"#9A7A5A" }}>{a.localidad||""} · {a.permiso||""}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Respondidos con detalle */}
+      {disponibilidades.length > 0 && (
+        <div>
+          <div style={{ fontSize:12, fontWeight:700, color:"#2E7D32", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>✅ Disponibilidades recibidas</div>
+          {disponibilidades.map(d => {
+            const a = d.alumnos || alumnos.find(al => al.id === d.alumno_id) || {};
+            const franjas = d.franjas_disponibles || {};
+            const diasConFranjas = Object.entries(franjas).filter(([,fs]) => fs && fs.length > 0);
+            return (
+              <div key={d.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #C8E6C9", marginBottom:10, overflow:"hidden" }}>
+                <div style={{ background:"#F1F8E9", borderBottom:"1px solid #C8E6C9", padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:34, height:34, borderRadius:"50%", background:"#2E7D32", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, flexShrink:0 }}>{(a.nombre||"?")[0]}{(a.apellidos||"?")[0]}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos||"–"}, {a.nombre||"–"}</div>
+                    <div style={{ fontSize:11, color:"#5A7A5A" }}>{a.localidad||""} · {a.permiso||""}</div>
+                  </div>
+                  <div style={{ fontSize:11, color:"#2E7D32", fontWeight:600 }}>
+                    {new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
+                  </div>
+                </div>
+                <div style={{ padding:"10px 14px" }}>
+                  {d.preferencia_horaria && (
+                    <div style={{ fontSize:12, color:"#5A7A5A", marginBottom:8 }}>
+                      🕐 Preferencia: <strong>{d.preferencia_horaria}</strong>
+                    </div>
+                  )}
+                  {diasConFranjas.length === 0 ? (
+                    <div style={{ fontSize:12, color:"#9A9A9A", fontStyle:"italic" }}>Sin franjas específicas indicadas</div>
+                  ) : (
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {diasConFranjas.map(([dia, franjasList]) => (
+                        (franjasList||[]).map(franja => (
+                          <span key={dia+franja} style={{ background:"#E8F5E9", color:"#2E7D32", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
+                            {DIAS_L[dia]||dia} {FRANJAS_L[franja]||franja}
+                          </span>
+                        ))
+                      ))}
+                    </div>
+                  )}
+                  {d.notas && (
+                    <div style={{ marginTop:8, fontSize:12, color:"#5A5A5A", background:"#F7F3EE", borderRadius:8, padding:"6px 10px" }}>
+                      💬 {d.notas}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {tokens.length > 0 && disponibilidades.length === 0 && respondidos.length === 0 && (
+        <div style={{ textAlign:"center", padding:"30px 20px", color:"#7A7A7A" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>⏳</div>
+          <div style={{ fontSize:14 }}>Esperando respuestas... (actualiza cada 30s)</div>
+        </div>
+      )}
+
+      <button onClick={cargar} style={{ width:"100%", marginTop:8, padding:12, borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+        🔄 Actualizar ahora
+      </button>
+    </div>
+  );
+}
+
+function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
   const [busqueda, setBusqueda] = useState("");
   const BASE_URL = window.location.origin;
+
+  // Polling cada 30s para actualizar estado ✅/⏳
+  useEffect(() => {
+    if (!configId) return;
+    const actualizar = async () => {
+      try {
+        const { data } = await supabase
+          .from("tokens_alumno")
+          .select("*, alumnos(nombre, apellidos, telefono)")
+          .eq("config_id", configId);
+        if (data) setTokens(data);
+      } catch(e) { console.error(e); }
+    };
+    const intervalo = setInterval(actualizar, 30000);
+    return () => clearInterval(intervalo);
+  }, [configId]);
 
   // Formato semana desde tokens si hay config activa
   const semanaLabel = () => {
@@ -1240,10 +1394,11 @@ function ModuloWhatsApp({ alumnos, tokens }) {
 // APP SHELL — OFICINA
 // ══════════════════════════════════════════════
 const NAV = [
-  { key:"config",   label:"Config",   icon:"⚙️" },
-  { key:"alumnos",  label:"Alumnos",  icon:"👥" },
-  { key:"planning", label:"Planning", icon:"📅" },
-  { key:"whatsapp", label:"WhatsApp", icon:"💬" },
+  { key:"config",      label:"Config",    icon:"⚙️" },
+  { key:"alumnos",     label:"Alumnos",   icon:"👥" },
+  { key:"respuestas",  label:"Respuestas",icon:"📨" },
+  { key:"planning",    label:"Planning",  icon:"📅" },
+  { key:"whatsapp",    label:"WhatsApp",  icon:"💬" },
 ];
 
 export default function AppOficina() {
@@ -1309,10 +1464,11 @@ export default function AppOficina() {
 
       {/* CONTENIDO */}
       <div style={{ padding:"16px 16px 0" }}>
-        {pantalla==="config"   && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} />}
-        {pantalla==="alumnos"  && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
-        {pantalla==="planning" && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} />}
-        {pantalla==="whatsapp" && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} />}
+        {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} />}
+        {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
+        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} configId={configId} />}
+        {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} />}
+        {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
       </div>
 
       {/* NAV INFERIOR */}
