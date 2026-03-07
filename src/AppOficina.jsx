@@ -1,4 +1,4 @@
-// v27 — planning persistente, PDFs HTML, motor B vehículo fijo
+// v30b — Informes PDF visuales + pestaña Informes + teléfonos profesores
 import { useState, useEffect } from "react";
 import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
