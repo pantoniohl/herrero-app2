@@ -533,9 +533,12 @@ function GestorTramos({ tramos, onChange }) {
 // ══════════════════════════════════════════════
 // MÓDULO 1: CONFIGURACIÓN SEMANAL
 // ══════════════════════════════════════════════
-function ModuloConfig({ cfg, setCfg, alumnos }) {
+function ModuloConfig({ cfg, setCfg, alumnos, configId, setConfigId, tokens, setTokens }) {
   const [seccion, setSeccion] = useState("general");
   const [guardandoParcial, setGuardandoParcial] = useState(false);
+  const [mostrarTokens, setMostrarTokens] = useState(false);
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [generandoTokens, setGenerandoTokens] = useState(false);
 
   const setP = (k,v) => setCfg(p=>({...p,[k]:v}));
   const setProf = (pk,dia,field,val) => setCfg(p=>({...p, profesores:{...p.profesores,[pk]:{...p.profesores[pk],[dia]:{...p.profesores[pk][dia],[field]:val}}}}));
@@ -590,9 +593,85 @@ function ModuloConfig({ cfg, setCfg, alumnos }) {
             <textarea value={cfg.notas} onChange={e=>setP("notas",e.target.value)} placeholder="Incidencias, recordatorios..." rows={3} style={{ width:"100%", border:"1.5px solid #E8E0D5", borderRadius:10, padding:"10px", fontFamily:"inherit", fontSize:13, outline:"none", background:"#F7F3EE", resize:"vertical", boxSizing:"border-box" }} />
           </div>
           <div style={{ display:"flex", gap:8 }}>
-            <button onClick={()=>{setGuardandoParcial(true);setTimeout(()=>setGuardandoParcial(false),1500);}} style={{ flex:1, padding:12, borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}>{guardandoParcial?"✅ Guardado":"💾 Guardar borrador"}</button>
-            <button style={{ flex:2, padding:12, borderRadius:10, border:"none", background:"#C8102E", color:"white", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(200,16,46,0.25)" }}>⚡ Activar semana</button>
+            <button onClick={async()=>{
+              try {
+                setGuardandoParcial(true);
+                const saved = await guardarConfigBorrador(cfg);
+                setConfigId(saved.id);
+                setTimeout(()=>setGuardandoParcial(false),1500);
+              } catch(e) { console.error(e); setGuardandoParcial(false); }
+            }} style={{ flex:1, padding:12, borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}>{guardandoParcial?"✅ Guardado":"💾 Guardar borrador"}</button>
+            <button onClick={async()=>{
+              try {
+                const saved = await guardarConfigBorrador(cfg);
+                await activarSemanaDB(saved.id);
+                setConfigId(saved.id);
+                setMostrarTokens(true);
+              } catch(e) { console.error(e); alert("Error al activar: "+e.message); }
+            }} style={{ flex:2, padding:12, borderRadius:10, border:"none", background:"#C8102E", color:"white", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(200,16,46,0.25)" }}>⚡ Activar semana</button>
           </div>
+
+          {/* MODAL SELECCIÓN ALUMNOS Y GENERACIÓN DE TOKENS */}
+          {mostrarTokens && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:400, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div style={{ background:"white", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:500, maxHeight:"85vh", overflowY:"auto", padding:"24px 20px 40px" }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                  <div style={{ fontSize:17, fontWeight:700 }}>📲 Seleccionar alumnos</div>
+                  <button onClick={()=>setMostrarTokens(false)} style={{ width:32, height:32, borderRadius:"50%", border:"1.5px solid #E8E0D5", background:"white", cursor:"pointer", fontSize:16 }}>✕</button>
+                </div>
+                <div style={{ fontSize:13, color:"#5A5A5A", marginBottom:14 }}>Elige a qué alumnos enviar el enlace de disponibilidad esta semana.</div>
+                <button onClick={()=>setSeleccionados(new Set(alumnos.filter(a=>a.activo).map(a=>a.id)))} style={{ fontSize:12, color:"#1A3A6B", fontWeight:600, background:"none", border:"none", cursor:"pointer", marginBottom:10 }}>✅ Seleccionar todos</button>
+                <div style={{ marginBottom:16 }}>
+                  {alumnos.filter(a=>a.activo).map(a=>{
+                    const sel = seleccionados.has(a.id);
+                    const yaToken = tokens.find(t=>t.alumno_id===a.id);
+                    return (
+                      <div key={a.id} onClick={()=>{
+                        setSeleccionados(prev=>{const s=new Set(prev); sel?s.delete(a.id):s.add(a.id); return s;});
+                      }} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:10, border:"1.5px solid "+(sel?"#1A3A6B":"#E8E0D5"), background:sel?"#EEF3FF":"white", marginBottom:6, cursor:"pointer" }}>
+                        <div style={{ width:22, height:22, borderRadius:6, border:"2px solid "+(sel?"#1A3A6B":"#C0C0C0"), background:sel?"#1A3A6B":"white", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          {sel && <span style={{ color:"white", fontSize:13, fontWeight:700 }}>✓</span>}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos}, {a.nombre}</div>
+                          <div style={{ fontSize:11, color:"#7A7A7A" }}>{a.localidad} · {a.permiso}</div>
+                        </div>
+                        {yaToken && <span style={{ fontSize:10, color:yaToken.usado?"#2E7D32":"#E65100", fontWeight:600 }}>{yaToken.usado?"✅ Enviado":"⏳ Pendiente"}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button onClick={async()=>{
+                  if (seleccionados.size===0) { alert("Selecciona al menos un alumno."); return; }
+                  setGenerandoTokens(true);
+                  try {
+                    const ids = [...seleccionados];
+                    const fechaExp = cfg.fechaLimite || new Date(Date.now()+7*86400000).toISOString();
+                    const registros = ids.map(alumnoId=>({
+                      alumno_id: alumnoId,
+                      config_id: configId,
+                      expires_at: fechaExp,
+                      usado: false,
+                    }));
+                    const { data, error } = await supabase
+                      .from("tokens_alumno")
+                      .upsert(registros, { onConflict:"alumno_id,config_id" })
+                      .select("*, alumnos(nombre, apellidos, telefono)");
+                    if (error) throw error;
+                    setTokens(data);
+                    setMostrarTokens(false);
+                    alert(`✅ ${data.length} enlace(s) generado(s). Ve a la pestaña WhatsApp para enviarlos.`);
+                  } catch(e) {
+                    alert("Error generando tokens: "+e.message);
+                  } finally {
+                    setGenerandoTokens(false);
+                  }
+                }} style={{ width:"100%", padding:14, background:"#C8102E", color:"white", border:"none", borderRadius:12, fontFamily:"inherit", fontSize:15, fontWeight:700, cursor:"pointer" }}>
+                  {generandoTokens?"⏳ Generando...":"📲 Generar enlaces"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1079,42 +1158,77 @@ function ModuloPlanning({ cfg, alumnos }) {
 // ══════════════════════════════════════════════
 // MÓDULO 4: WHATSAPP (compacto)
 // ══════════════════════════════════════════════
-function ModuloWhatsApp({ alumnos }) {
+function ModuloWhatsApp({ alumnos, tokens }) {
   const [busqueda, setBusqueda] = useState("");
-  const SEMANA_WA = "17–21 marzo 2025";
+  const BASE_URL = window.location.origin;
 
-  const genTexto = (a) => {
-    const lineas = ["🚗 *AUTOESCUELA HERRERO*", "📋 Semana "+SEMANA_WA, "👤 "+a.apellidos+", "+a.nombre, ""];
-    lineas.push("_Disponibilidad pendiente de confirmar_");
-    lineas.push(""); lineas.push("_Autoescuela Herrero · 688 70 86 69_");
-    return lineas.join("\n");
+  // Formato semana desde tokens si hay config activa
+  const semanaLabel = () => {
+    // Intentar sacar fechas del primer token
+    return "esta semana";
   };
 
-  const filtrados = alumnos.filter(a=>a.activo&&(a.nombre+" "+a.apellidos).toLowerCase().includes(busqueda.toLowerCase()));
+  const genMensaje = (alumno, token) => {
+    const enlace = `${BASE_URL}/alumno?token=${token}`;
+    return `Hola ${alumno.nombre} 👋\n\nTe enviamos el enlace para indicar tu disponibilidad de prácticas *esta semana*:\n\n🔗 ${enlace}\n\n⏰ Rellénalo antes de la fecha límite indicada en el formulario.\n\n_Autoescuela Herrero · 688 70 86 69_`;
+  };
+
+  // Combinar tokens con datos de alumno
+  const tokensConDatos = tokens.map(t => ({
+    ...t,
+    alumno: alumnos.find(a => a.id === t.alumno_id) || t.alumnos,
+  })).filter(t => t.alumno);
+
+  const filtrados = tokensConDatos.filter(t => {
+    const a = t.alumno;
+    if (!a) return false;
+    return (a.nombre+" "+a.apellidos).toLowerCase().includes(busqueda.toLowerCase());
+  });
+
+  if (tokens.length === 0) return (
+    <div style={{ textAlign:"center", padding:"40px 20px", color:"#7A7A7A" }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>📲</div>
+      <div style={{ fontSize:15, fontWeight:600, marginBottom:8 }}>Sin enlaces generados</div>
+      <div style={{ fontSize:13 }}>Activa la semana desde Config y selecciona los alumnos para generar los enlaces.</div>
+    </div>
+  );
 
   return (
     <div>
-      <div style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", display:"flex", alignItems:"center", gap:10, padding:"10px 14px", marginBottom:12 }}>
+      <div style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", display:"flex", alignItems:"center", gap:10, padding:"10px 14px", marginBottom:8 }}>
         <span>🔍</span>
         <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="Buscar alumno..." style={{ flex:1, border:"none", background:"transparent", fontFamily:"inherit", fontSize:14, outline:"none" }} />
       </div>
-      {filtrados.map(a=>{
-        const [copiado, setCopiado] = useState(false);
-        const texto = genTexto(a);
+      <div style={{ fontSize:12, color:"#7A7A7A", marginBottom:12 }}>
+        {tokens.filter(t=>t.usado).length}/{tokens.length} alumnos han enviado su disponibilidad
+      </div>
+      {filtrados.map(t => {
+        const a = t.alumno;
+        const telefono = (a.telefono||"").replace(/\D/g,"");
+        const mensaje = genMensaje(a, t.token);
+        const waUrl = `https://wa.me/34${telefono}?text=${encodeURIComponent(mensaje)}`;
         return (
-          <div key={a.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #E8E0D5", marginBottom:10, overflow:"hidden" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#F7F3EE", borderBottom:"1px solid #F0EBE5" }}>
-              <div style={{ width:34, height:34, borderRadius:"50%", background:"#1A3A6B", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{a.nombre[0]}{a.apellidos[0]}</div>
-              <div style={{ flex:1 }}><div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos}, {a.nombre}</div><div style={{ fontSize:12, color:"#7A7A7A" }}>{a.localidad} · {a.permiso}</div></div>
-            </div>
-            <div style={{ padding:"10px 14px" }}>
-              <div style={{ background:"#E9F5E1", borderRadius:10, padding:"10px", fontSize:11, lineHeight:1.7, whiteSpace:"pre-wrap", fontFamily:"monospace", maxHeight:100, overflowY:"auto" }}>
-                {texto.replace(/\\n/g,"\n").split("\n").map((l,i)=><div key={i}>{l||" "}</div>)}
+          <div key={t.id} style={{ background:"white", borderRadius:12, border:"1.5px solid "+(t.usado?"#C8E6C9":"#E8E0D5"), marginBottom:10, overflow:"hidden" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:t.usado?"#F1F8E9":"#F7F3EE", borderBottom:"1px solid #F0EBE5" }}>
+              <div style={{ width:34, height:34, borderRadius:"50%", background:t.usado?"#2E7D32":"#1A3A6B", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700 }}>{a.nombre[0]}{a.apellidos[0]}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos}, {a.nombre}</div>
+                <div style={{ fontSize:12, color:"#7A7A7A" }}>{a.localidad} · {a.permiso}</div>
               </div>
-              <button onClick={()=>{navigator.clipboard.writeText(texto.replace(/\\n/g,"\n"));setCopiado(true);setTimeout(()=>setCopiado(false),2000);}} style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:10, background:copiado?"#1A6B3A":"#25D366", color:"white", border:"none", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                {copiado?"✅ Copiado":"📋 Copiar para WhatsApp"}
-              </button>
+              <span style={{ fontSize:11, fontWeight:700, color:t.usado?"#2E7D32":"#E65100", background:t.usado?"#E8F5E9":"#FFF3E0", padding:"3px 8px", borderRadius:20 }}>
+                {t.usado?"✅ Enviado":"⏳ Pendiente"}
+              </span>
             </div>
+            {!t.usado && (
+              <div style={{ padding:"10px 14px" }}>
+                <div style={{ background:"#E9F5E1", borderRadius:10, padding:"10px", fontSize:11, lineHeight:1.7, whiteSpace:"pre-wrap", maxHeight:90, overflowY:"auto", color:"#2A2A2A" }}>
+                  {mensaje}
+                </div>
+                <a href={waUrl} target="_blank" rel="noreferrer" style={{ display:"block", width:"100%", marginTop:8, padding:"11px", borderRadius:10, background:"#25D366", color:"white", border:"none", fontFamily:"inherit", fontSize:13, fontWeight:700, cursor:"pointer", textAlign:"center", textDecoration:"none" }}>
+                  📱 Abrir WhatsApp Web
+                </a>
+              </div>
+            )}
           </div>
         );
       })}
@@ -1135,7 +1249,51 @@ const NAV = [
 export default function AppOficina() {
   const [pantalla, setPantalla] = useState("config");
   const [cfg, setCfg] = useState(configInicial());
-  const [alumnos, setAlumnos] = useState(ALUMNOS_DEMO);
+  const [configId, setConfigId] = useState(null);
+  const [alumnos, setAlumnos] = useState([]);
+  const [tokens, setTokens] = useState([]); // tokens generados para la semana activa
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    const cargar = async () => {
+      try {
+        const [alumnosData, configData] = await Promise.all([
+          getAlumnos({ soloActivos: false }),
+          getConfigActiva(),
+        ]);
+        if (alumnosData) setAlumnos(alumnosData.map(a => ({
+          ...a,
+          bonoRestantes: a.bono_restantes,
+          profesorFijo: a.profesor_fijo,
+          cocheAsignado: a.coche_asignado,
+          maxPracticas: a.max_practicas_semana,
+          fechaAlta: a.fecha_alta,
+        })));
+        if (configData) {
+          setCfg(configData);
+          setConfigId(configData.id);
+          // Cargar tokens existentes para esta semana
+          const { data: toks } = await supabase
+            .from("tokens_alumno")
+            .select("*, alumnos(nombre, apellidos, telefono)")
+            .eq("config_id", configData.id);
+          if (toks) setTokens(toks);
+        }
+      } catch (e) {
+        console.error("Error cargando datos:", e);
+      } finally {
+        setCargando(false);
+      }
+    };
+    cargar();
+  }, []);
+
+  if (cargando) return (
+    <div style={{ minHeight:"100vh", background:"#F7F3EE", fontFamily:"system-ui, sans-serif", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
+      <div style={{ fontSize:32 }}>⏳</div>
+      <div style={{ fontSize:15, fontWeight:600, color:"#1A3A6B" }}>Cargando...</div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight:"100vh", background:"#F7F3EE", fontFamily:"system-ui, sans-serif", paddingBottom:70 }}>
@@ -1151,10 +1309,10 @@ export default function AppOficina() {
 
       {/* CONTENIDO */}
       <div style={{ padding:"16px 16px 0" }}>
-        {pantalla==="config"   && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} />}
+        {pantalla==="config"   && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} />}
         {pantalla==="alumnos"  && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
-        {pantalla==="planning" && <ModuloPlanning cfg={cfg} alumnos={alumnos} />}
-        {pantalla==="whatsapp" && <ModuloWhatsApp alumnos={alumnos} />}
+        {pantalla==="planning" && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} />}
+        {pantalla==="whatsapp" && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} />}
       </div>
 
       {/* NAV INFERIOR */}
