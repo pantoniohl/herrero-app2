@@ -1036,28 +1036,66 @@ function ChipPractica({ p, onClick }) {
   );
 }
 
-function ModuloPlanning({ cfg, alumnos }) {
+function ModuloPlanning({ cfg, alumnos, configId }) {
   const [planning, setPlanning] = useState(null);
   const [sinAsignar, setSinAsignar] = useState([]);
   const [diaActivo, setDiaActivo] = useState("lunes");
   const [vista, setVista] = useState("dia");
   const [modalP, setModalP] = useState(null);
+  const [generando, setGenerando] = useState(false);
 
-  const ejecutar = () => {
-    const alumnosConDisp = alumnos.filter(a=>a.activo).map(a=>({
-      ...a,
-      disponibilidad: Object.fromEntries(DIAS_SEMANA.map(d=>[d,{estado:"todo"}]))
-    }));
-    const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
-    setPlanning(res.planning);
-    setSinAsignar(res.sinAsignar);
+  const ejecutar = async () => {
+    setGenerando(true);
+    try {
+      // Cargar disponibilidades reales si hay configId
+      let dispPorAlumno = {};
+      if (configId) {
+        const disps = await getDisponibilidades(configId);
+        (disps || []).forEach(d => {
+          dispPorAlumno[d.alumno_id] = d.dias || {};
+        });
+      }
+
+      const alumnosConDisp = alumnos.filter(a => a.activo).map(a => {
+        const diasDisp = dispPorAlumno[a.id];
+        let disponibilidad;
+        if (diasDisp && Object.keys(diasDisp).length > 0) {
+          // Convertir franjas de Supabase al formato del motor
+          disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => {
+            const franjas = diasDisp[d] || [];
+            if (franjas.length === 0) return [d, { estado: "no" }];
+            if (franjas.includes("manana") && franjas.includes("tarde") && franjas.includes("noche")) return [d, { estado: "todo" }];
+            return [d, { estado: "tramos", tramos: franjaATramos(franjas) }];
+          }));
+        } else {
+          // Sin disponibilidad registrada: disponible todo
+          disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => [d, { estado: "todo" }]));
+        }
+        return { ...a, disponibilidad };
+      });
+
+      const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
+      setPlanning(res.planning);
+      setSinAsignar(res.sinAsignar);
+    } catch(e) {
+      console.error("Error generando planning:", e);
+      alert("Error al generar planning: " + (e.message || e));
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  // Convierte franjas ["manana","tarde"] a tramos horarios
+  const franjaATramos = (franjas) => {
+    const mapa = { manana:[{desde:"09:00",hasta:"14:00"}], tarde:[{desde:"14:00",hasta:"17:00"}], noche:[{desde:"17:00",hasta:"21:00"}] };
+    return franjas.flatMap(f => mapa[f] || []);
   };
 
   const totalAsignadas = planning ? Object.values(planning).flat().length : 0;
 
   return (
     <div>
-      <button onClick={ejecutar} style={{ width:"100%", padding:14, background:"#1A3A6B", color:"white", border:"none", borderRadius:12, fontFamily:"inherit", fontSize:15, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 16px rgba(26,58,107,0.3)", marginBottom:12 }}>⚡ Generar planning</button>
+      <button onClick={ejecutar} disabled={generando} style={{ width:"100%", padding:14, background:generando?"#5A5A5A":"#1A3A6B", color:"white", border:"none", borderRadius:12, fontFamily:"inherit", fontSize:15, fontWeight:700, cursor:generando?"not-allowed":"pointer", boxShadow:"0 4px 16px rgba(26,58,107,0.3)", marginBottom:12 }}>{generando ? "⏳ Generando..." : "⚡ Generar planning"}</button>
 
       {planning && <>
         <div style={{ display:"flex", gap:8, marginBottom:12 }}>
@@ -1179,27 +1217,35 @@ function ModuloPlanning({ cfg, alumnos }) {
 // ══════════════════════════════════════════════
 // MÓDULO RESPUESTAS
 // ══════════════════════════════════════════════
-function ModuloRespuestas({ alumnos, tokens, configId }) {
+function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) {
   const [disponibilidades, setDisponibilidades] = useState([]);
+  const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
 
   const cargar = async () => {
     if (!configId) { setCargando(false); return; }
     try {
-      const data = await getDisponibilidades(configId);
-      setDisponibilidades(data || []);
+      const [dispData, toksData] = await Promise.all([
+        getDisponibilidades(configId),
+        supabase.from("tokens_alumno").select("*, alumnos(nombre,apellidos,telefono)").eq("config_id", configId)
+      ]);
+      setDisponibilidades(dispData || []);
+      if (toksData.data) {
+        setTokensLocales(toksData.data);
+        if (setTokens) setTokens(toksData.data);
+      }
     } catch(e) { console.error(e); }
     finally { setCargando(false); }
   };
 
   useEffect(() => {
     cargar();
-    const intervalo = setInterval(cargar, 30000); // polling 30s
+    const intervalo = setInterval(cargar, 15000); // polling 15s
     return () => clearInterval(intervalo);
   }, [configId]);
 
-  const pendientes = tokens.filter(t => !t.usado);
-  const respondidos = tokens.filter(t => t.usado);
+  const pendientes = tokensLocales.filter(t => !t.usado);
+  const respondidos = tokensLocales.filter(t => t.usado);
   const DIAS_L = { lunes:"Lun", martes:"Mar", miercoles:"Mié", jueves:"Jue", viernes:"Vie", sabado:"Sáb" };
   const FRANJAS_L = { manana:"Mañana", tarde:"Tarde", noche:"Noche" };
 
@@ -1496,7 +1542,7 @@ export default function AppOficina() {
       <div style={{ padding:"16px 16px 0" }}>
         {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} />}
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
-        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} configId={configId} />}
+        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
         {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} />}
         {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
       </div>
