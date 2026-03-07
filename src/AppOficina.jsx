@@ -1978,7 +1978,7 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
     return msg;
   };
 
-  const PROFS_CONFIG = { mamen:"688000001", javi:"688000002", pablo:"688000003", toni:"688000004" };
+  const PROFS_CONFIG = { mamen:"605285702", javi:"617190800", pablo:"622593677", toni:"655577578" };
 
   return (
     <div style={{ paddingBottom:180 }}>
