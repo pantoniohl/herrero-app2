@@ -1603,7 +1603,148 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
 // ══════════════════════════════════════════════
 // MÓDULO RESPUESTAS
 // ══════════════════════════════════════════════
-function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) {
+// ── PDF RESUMEN RESPUESTAS ────────────────────────────────────
+function generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg) {
+  const DIAS_L  = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes", sabado:"Sábado" };
+  const FRANJAS_L = { manana:"Mañana (9-14h)", tarde:"Tarde (14-17h)", noche:"Noche (17-21h)" };
+  const FRANJA_COLOR = { manana:"#FFF9C4", tarde:"#FFE0B2", noche:"#E8EAF6" };
+  const FRANJA_BORDER = { manana:"#F9A825", tarde:"#E65100", noche:"#3949AB" };
+
+  const alumnosQueRespondieron = new Set(disponibilidades.map(d => d.alumno_id));
+  const pendientes = tokensLocales.filter(t => !alumnosQueRespondieron.has(t.alumno_id));
+
+  // Mapa alumnoId → ficha completa
+  const alumnoMap = {};
+  alumnos.forEach(a => { alumnoMap[a.id] = a; });
+
+  // Enriquecer disponibilidades con datos del alumno
+  const dispsConAlumno = disponibilidades.map(d => ({
+    ...d,
+    alumno: alumnoMap[d.alumno_id] || d.alumnos || {},
+  })).sort((a, b) => {
+    const na = (a.alumno.apellidos||"") + (a.alumno.nombre||"");
+    const nb = (b.alumno.apellidos||"") + (b.alumno.nombre||"");
+    return na.localeCompare(nb);
+  });
+
+  const fechaGen = new Date().toLocaleDateString("es-ES", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>Respuestas Alumnos – ${semanaLabel(cfg)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #f5f5f5; font-size: 13px; }
+    .header { background: #1A3A6B; color: white; padding: 14px 18px; border-radius: 10px; margin-bottom: 16px; display:flex; justify-content:space-between; align-items:center; }
+    .header h1 { margin: 0; font-size: 17px; }
+    .header p { margin: 4px 0 0; font-size: 11px; opacity: 0.8; }
+    .header-right { text-align:right; font-size:11px; opacity:0.8; }
+    .stats { display:flex; gap:10px; margin-bottom:16px; }
+    .stat { flex:1; background:white; border-radius:10px; padding:12px; text-align:center; border:1px solid #E8E0D5; }
+    .stat-num { font-size:24px; font-weight:800; }
+    .stat-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+    .stat.verde .stat-num { color:#2E7D32; } .stat.verde .stat-lbl { color:#4CAF50; }
+    .stat.naranja .stat-num { color:#E65100; } .stat.naranja .stat-lbl { color:#FF9800; }
+    .stat.azul .stat-num { color:#1565C0; } .stat.azul .stat-lbl { color:#1976D2; }
+    .seccion-titulo { font-size:12px; font-weight:800; color:#1A3A6B; text-transform:uppercase; letter-spacing:0.7px; padding:6px 0; border-bottom:2px solid #1A3A6B; margin-bottom:10px; margin-top:18px; }
+    .alumno-card { background:white; border-radius:10px; border:1px solid #E8E0D5; margin-bottom:10px; overflow:hidden; page-break-inside:avoid; }
+    .alumno-head { background:#F7F3EE; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #E8E0D5; }
+    .alumno-nombre { font-weight:800; font-size:13px; color:#1A1A1A; }
+    .alumno-meta { font-size:10px; color:#777; margin-top:2px; }
+    .alumno-body { padding:10px 12px; }
+    .deseadas { display:inline-block; background:#E3F2FD; color:#1565C0; font-weight:700; font-size:11px; padding:2px 8px; border-radius:8px; }
+    .transporte-badge { display:inline-block; background:#FFF3E0; color:#E65100; font-weight:700; font-size:10px; padding:2px 7px; border-radius:8px; margin-left:6px; }
+    .dias-grid { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .dia-item { border-radius:8px; padding:5px 8px; min-width:90px; border:1px solid; }
+    .dia-nombre { font-weight:700; font-size:11px; color:#1A3A6B; margin-bottom:3px; }
+    .franja-tag { display:inline-block; font-size:10px; font-weight:600; padding:1px 6px; border-radius:5px; margin:1px; }
+    .sin-respuesta { color:#999; font-style:italic; font-size:12px; }
+    .pendiente-item { display:inline-block; background:#FFF3E0; border:1px solid #FFCC80; border-radius:8px; padding:4px 10px; margin:3px; font-size:12px; color:#E65100; }
+    .footer { margin-top:20px; text-align:center; font-size:10px; color:#999; border-top:1px solid #E0E0E0; padding-top:10px; }
+    @media print { body { background:white; padding:0; } .alumno-card { break-inside:avoid; } }
+  </style></head><body>`;
+
+  // Cabecera
+  html += `<div class="header">
+    <div><h1>📬 Respuestas de Disponibilidad</h1><p>${semanaLabel(cfg)}</p></div>
+    <div class="header-right">Generado: ${fechaGen}<br>Autoescuela Herrero · 688 70 86 69</div>
+  </div>`;
+
+  // Stats
+  html += `<div class="stats">
+    <div class="stat verde"><div class="stat-num">${dispsConAlumno.length}</div><div class="stat-lbl">Han respondido</div></div>
+    <div class="stat naranja"><div class="stat-num">${pendientes.length}</div><div class="stat-lbl">Pendientes</div></div>
+    <div class="stat azul"><div class="stat-num">${tokensLocales.length}</div><div class="stat-lbl">Total enviados</div></div>
+  </div>`;
+
+  // Sección respondidos
+  if (dispsConAlumno.length > 0) {
+    html += `<div class="seccion-titulo">✅ Han respondido (${dispsConAlumno.length})</div>`;
+    dispsConAlumno.forEach(d => {
+      const a = d.alumno;
+      const nombre = (a.apellidos||"?") + ", " + (a.nombre||"?");
+      const meta = [a.localidad, "Permiso " + (a.permiso||"?"), a.fase].filter(Boolean).join(" · ");
+      const transporte = a.transporte;
+      const deseadas = d.practicas_deseadas || "—";
+      const dias = d.dias || {};
+
+      // Calcular días con disponibilidad
+      const diasConFranjas = DIAS_SEMANA.filter(dia => (dias[dia]||[]).length > 0);
+
+      html += `<div class="alumno-card">
+        <div class="alumno-head">
+          <div>
+            <div class="alumno-nombre">${nombre}</div>
+            <div class="alumno-meta">${meta}${transporte ? '<span class="transporte-badge">🚐 Transporte</span>' : ""}</div>
+          </div>
+          <div style="text-align:right">
+            <span class="deseadas">🎯 ${deseadas} práctica${deseadas > 1 ? "s" : ""}</span>
+          </div>
+        </div>
+        <div class="alumno-body">`;
+
+      if (diasConFranjas.length === 0) {
+        html += `<span class="sin-respuesta">Sin días disponibles indicados</span>`;
+      } else {
+        html += `<div class="dias-grid">`;
+        DIAS_SEMANA.forEach(dia => {
+          const franjas = dias[dia] || [];
+          if (!franjas.length) return;
+          // Color del día según número de franjas
+          const bgColor = franjas.length === 3 ? "#E8F5E9" : franjas.length === 2 ? "#FFF9C4" : "#F3F3F3";
+          html += `<div class="dia-item" style="background:${bgColor};border-color:#CCC">
+            <div class="dia-nombre">${DIAS_L[dia]||dia}</div>`;
+          franjas.forEach(f => {
+            html += `<span class="franja-tag" style="background:${FRANJA_COLOR[f]||"#EEE"};border:1px solid ${FRANJA_BORDER[f]||"#CCC"}">${FRANJAS_L[f]||f}</span>`;
+          });
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+
+      html += `</div></div>`;
+    });
+  }
+
+  // Sección pendientes
+  if (pendientes.length > 0) {
+    html += `<div class="seccion-titulo">⏳ Pendientes de respuesta (${pendientes.length})</div>
+    <div style="padding:8px 0">`;
+    pendientes.forEach(t => {
+      const nombre = t.alumnos ? (t.alumnos.apellidos + ", " + t.alumnos.nombre) : "Desconocido";
+      html += `<span class="pendiente-item">${nombre}</span>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `<div class="footer">Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69 · herreroformacion.es</div></body></html>`;
+
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+}
+
+
+function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cfg }) {
   const [disponibilidades, setDisponibilidades] = useState([]);
   const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
@@ -1646,6 +1787,16 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId }) 
 
   return (
     <div>
+      {/* Cabecera + botón PDF */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"#1A3A6B" }}>📬 Respuestas · {semanaLabel ? semanaLabel({}) : ""}</div>
+        <button
+          onClick={()=>generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg||{})}
+          style={{ padding:"7px 14px", background:"#1A3A6B", color:"white", border:"none", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:11, fontWeight:700 }}>
+          🖨️ PDF Respuestas
+        </button>
+      </div>
+
       {/* Contador */}
       <div style={{ display:"flex", gap:10, marginBottom:14 }}>
         <div style={{ flex:1, background:"#E8F5E9", borderRadius:12, padding:"12px", textAlign:"center" }}>
@@ -2395,7 +2546,7 @@ export default function AppOficina() {
       <div style={{ padding:"16px 16px 0" }}>
         {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} onNuevaSemana={handleNuevaSemana} />}
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
-        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
+        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} cfg={cfg} />}
         {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} />}
         {pantalla==="informes"    && <ModuloInformes planning={planning} alumnos={alumnos} cfg={cfg} tokens={tokens} configId={configId} />}
         {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
