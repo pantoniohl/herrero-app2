@@ -1,4 +1,3 @@
-// v30b — Informes PDF visuales + pestaña Informes + teléfonos profesores
 import { useState, useEffect } from "react";
 import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
@@ -252,9 +251,8 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
       const limitePista = toMin(configSemanal.horasPista?.[dia] || HORA_MAX);
 
       // Cuántas prácticas puede tener el alumno este día
-      // Trujillo: hasta 3/día | Pueblo: hasta 2/día
       const maxHoy = alumno.permiso === "B"
-        ? (alumno.localidad === "Trujillo" ? 3 : 2)
+        ? (alumno.transporte === "autoescuela" ? 2 : 3)
         : 1;
       let asignadasHoy = 0;
 
@@ -322,17 +320,12 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
           // Para pesados: buscar vehículo compatible
           if (alumno.permiso !== "B") {
             const esPista = alumno.fase === "pista";
-            let vehCompatibles = Object.entries(VEHICULOS).filter(([, v]) => {
+            const vehCompatibles = Object.entries(VEHICULOS).filter(([, v]) => {
               if (v.permiso !== alumno.permiso) return false;
               if (esPista && v.modalidad === "circ") return false;
               if (!esPista && v.modalidad === "pista") return false;
               return true;
             }).map(([k]) => k);
-
-            // Respetar vehículo preferente del alumno: ponerlo primero
-            if (alumno.cocheAsignado && vehCompatibles.includes(alumno.cocheAsignado)) {
-              vehCompatibles = [alumno.cocheAsignado, ...vehCompatibles.filter(v => v !== alumno.cocheAsignado)];
-            }
 
             let asignadoConVeh = false;
             for (const vehKey of vehCompatibles) {
@@ -392,45 +385,35 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
             if (asignadoConVeh) break;
 
           } else {
-            // Módulo B: vehículo fijo del alumno (si tiene) o cualquiera disponible
-            const vehB = alumno.cocheAsignado
-              ? [alumno.cocheAsignado]
-              : Object.keys(VEHICULOS_B);
-
-            for (const vehKey of vehB) {
-              const vehConfigDia = configSemanal.vehiculos?.[vehKey]?.[dia] || configSemanal.vehiculos?.[vehKey]?.dias?.[dia];
-              // Si el vehículo no está configurado como "no", proceder
-              if (vehConfigDia && vehConfigDia.estado === "no") continue;
-              let tramosVeh = vehConfigDia ? tramosDisponibles(vehConfigDia) : [{desde:toMin("08:00"),hasta:toMin("21:00")}];
-              const ocupacionesVeh = getOcup(ocupVeh, vehKey + "_" + dia);
-              tramosVeh = restarOcupaciones(tramosVeh, ocupacionesVeh);
-              const tramosFinalesB = intersectarTramos(tramosComunes, tramosVeh);
-              const hueco = elegirHueco(tramosFinalesB, duracion, ocupacionesProf, capProf);
-              if (hueco) {
-                const entrada = {
-                  alumnoId: alumno.id,
-                  alumnoNombre: alumno.apellidos + ", " + alumno.nombre,
-                  profesor: profKey,
-                  vehiculo: vehKey,
-                  permiso: "B",
-                  fase: null,
-                  desde: toHHMM(hueco.desde),
-                  hasta: toHHMM(hueco.hasta),
-                  duracion,
-                  tipo: "circulacion",
-                  forzado: false,
-                };
-                planning[dia].push(entrada);
-                getOcup(ocupProf, profKey + "_" + dia).push(hueco);
-                getOcup(ocupVeh, vehKey + "_" + dia).push(hueco);
-                asignadas++;
-                asignadasHoy++;
-                asignado = true;
-                break;
-              }
+            // Módulo B: no necesita vehículo específico
+            const hueco = elegirHueco(
+              tramosComunes, duracion,
+              ocupacionesProf,
+              capProf
+            );
+            if (hueco) {
+              const entrada = {
+                alumnoId: alumno.id,
+                alumnoNombre: alumno.apellidos + ", " + alumno.nombre,
+                profesor: profKey,
+                vehiculo: null,
+                permiso: "B",
+                fase: null,
+                desde: toHHMM(hueco.desde),
+                hasta: toHHMM(hueco.hasta),
+                duracion,
+                tipo: "circulacion",
+                forzado: false,
+              };
+              planning[dia].push(entrada);
+              getOcup(ocupProf, profKey + "_" + dia).push(hueco);
+              asignadas++;
+              asignadasHoy++;
+              asignado = true;
+              break;
             }
-            if (asignado) break;
           }
+        }
 
         if (!asignado) break; // No hay más huecos este día
       }
@@ -1059,10 +1042,20 @@ function FormAlumnoCompacto({ alumno, onGuardar }) {
   );
 }
 
+// ══════════════════════════════════════════════
+// GENERADORES DE PDF (usando jsPDF via CDN)
+// ══════════════════════════════════════════════
 
-// ══════════════════════════════════════════════
-// GENERADORES DE PDF (ventana HTML imprimible)
-// ══════════════════════════════════════════════
+function cargarJsPDF() {
+  return new Promise((resolve, reject) => {
+    if (window.jspdf) { resolve(window.jspdf.jsPDF); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
 
 function semanaLabel(cfg) {
   const de = cfg.fechasSemanaDe || "";
@@ -1747,10 +1740,18 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
   );
 }
 
+// ══════════════════════════════════════════════
+// APP SHELL — OFICINA
+// ══════════════════════════════════════════════
+const NAV = [
+  { key:"config",      label:"Config",    icon:"⚙️" },
+  { key:"alumnos",     label:"Alumnos",   icon:"👥" },
+  { key:"respuestas",  label:"Respuestas",icon:"📬" },
+  { key:"planning",    label:"Planning",  icon:"📅" },
+  { key:"informes",    label:"Informes",  icon:"📋" },
+  { key:"whatsapp",    label:"WhatsApp",  icon:"💬" },
+];
 
-// ══════════════════════════════════════════════
-// MÓDULO 5: INFORMES (PDF visual en navegador)
-// ══════════════════════════════════════════════
 function InformePlanningProfesor({ profKey, planning, cfg }) {
   const cp = COLOR_PROF[profKey] || "#1A3A6B";
   const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey).map(p=>({...p,dia:d})));
@@ -1978,7 +1979,7 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
     return msg;
   };
 
-  const PROFS_CONFIG = { mamen:"605285702", javi:"617190800", pablo:"622593677", toni:"655577578" };
+  const PROFS_CONFIG = { mamen:"688000001", javi:"688000002", pablo:"688000003", toni:"688000004" };
 
   return (
     <div style={{ paddingBottom:180 }}>
@@ -2156,5 +2157,4 @@ export default function AppOficina() {
       </div>
     </div>
   );
-}
 }
