@@ -1531,7 +1531,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => {
             const franjas = diasDisp[d] || [];
             if (franjas.length === 0) return [d, { estado: "no" }];
-            if (franjas.includes("manana") && franjas.includes("tarde") && franjas.includes("noche")) return [d, { estado: "todo" }];
+            if (franjas.includes("manana") && franjas.includes("mediodia") && franjas.includes("tarde")) return [d, { estado: "todo" }];
             return [d, { estado: "tramos", tramos: franjaATramos(franjas) }];
           }));
         } else {
@@ -1554,7 +1554,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
 
   // Convierte franjas ["manana","tarde"] a tramos horarios
   const franjaATramos = (franjas) => {
-    const mapa = { manana:[{desde:"09:00",hasta:"14:00"}], tarde:[{desde:"14:00",hasta:"17:00"}], noche:[{desde:"17:00",hasta:"21:00"}] };
+    const mapa = { manana:[{desde:"09:00",hasta:"14:00"}], mediodia:[{desde:"14:00",hasta:"17:00"}], tarde:[{desde:"17:00",hasta:"20:30"}] };
     return franjas.flatMap(f => mapa[f] || []);
   };
 
@@ -1827,9 +1827,9 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
 // ── PDF RESUMEN RESPUESTAS ────────────────────────────────────
 function generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg) {
   const DIAS_L  = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes", sabado:"Sábado" };
-  const FRANJAS_L = { manana:"Mañana (9-14h)", tarde:"Tarde (14-17h)", noche:"Noche (17-21h)" };
-  const FRANJA_COLOR = { manana:"#FFF9C4", tarde:"#FFE0B2", noche:"#E8EAF6" };
-  const FRANJA_BORDER = { manana:"#F9A825", tarde:"#E65100", noche:"#3949AB" };
+  const FRANJAS_L = { manana:"Mañana (9-14h)", mediodia:"Mediodía (14-17h)", tarde:"Tarde (17-20:30h)" };
+  const FRANJA_COLOR = { manana:"#FFF9C4", mediodia:"#FFF9C4", tarde:"#FFE0B2" };
+  const FRANJA_BORDER = { manana:"#F9A825", mediodia:"#F9A825", tarde:"#E65100" };
 
   const alumnosQueRespondieron = new Set(disponibilidades.map(d => d.alumno_id));
   const pendientes = tokensLocales.filter(t => !alumnosQueRespondieron.has(t.alumno_id));
@@ -1982,7 +1982,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
 
     setSimulando(true);
     const DIAS = ['lunes','martes','miercoles','jueves','viernes'];
-    const FRANJAS = ['manana','tarde']; // Nunca 'noche': no se dan clases en esa franja
+    const FRANJAS = ['manana','mediodia','tarde'];: no se dan clases en esa franja
 
     // Peso: 70% disponible la mayoría de días, 30% días sueltos
     const genDias = () => {
@@ -2054,7 +2054,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   const pendientes = tokensLocales.filter(t => !alumnosQueRespondieron.has(t.alumno_id));
   const respondidos = tokensLocales.filter(t => alumnosQueRespondieron.has(t.alumno_id));
   const DIAS_L = { lunes:"Lun", martes:"Mar", miercoles:"Mié", jueves:"Jue", viernes:"Vie", sabado:"Sáb" };
-  const FRANJAS_L = { manana:"Mañana", tarde:"Tarde", noche:"Noche" };
+  const FRANJAS_L = { manana:"Mañana", mediodia:"Mediodía", tarde:"Tarde" };
 
   if (!configId) return (
     <div style={{ textAlign:"center", padding:"40px 20px", color:"#7A7A7A" }}>
