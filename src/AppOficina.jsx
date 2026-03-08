@@ -3,7 +3,7 @@ import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
   getConfigActiva, guardarConfigBorrador, activarSemana as activarSemanaDB,
   guardarPlanning, getPlanning, getDisponibilidades,
-  resetNuevaSemana
+  resetNuevaSemana, fusionarPlanning
 } from "./lib/supabase.js";
 
 // ── Credenciales oficina ──────────────────────────────────────
@@ -323,7 +323,8 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
   // Separar alumnos: primero pesados (C, C+E), luego B
   // Dentro de cada grupo: primero los que van a examen esa semana
   const alumnosExamen = new Set(configSemanal.alumnosExamen || []);
-  const diaExamenOrden = configSemanal.diaExamen ? (DIAS_ORDEN[configSemanal.diaExamen] ?? 99) : 99;
+  const esSemSig = configSemanal.diaExamen?.endsWith('_sig');
+  const diaExamenOrden = !configSemanal.diaExamen ? 99 : esSemSig ? 6 : (DIAS_ORDEN[configSemanal.diaExamen] ?? 99);
 
   const pesados = alumnos.filter(a => a.permiso === "C" || a.permiso === "C+E");
   const moduloB = alumnos.filter(a => a.permiso === "B");
@@ -365,7 +366,7 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
 
 
       // Bloqueo examen: si hay examen este día, bloquear franja 09:00-14:00
-      if (configSemanal.diaExamen === dia) {
+      if (!esSemSig && configSemanal.diaExamen === dia) {
         const examHasta = toMin("14:00");
         tramosAlumno = tramosAlumno
           .map(t => ({ desde: Math.max(t.desde, examHasta), hasta: t.hasta }))
@@ -804,7 +805,7 @@ function ModuloConfig({ cfg, setCfg, alumnos, configId, setConfigId, tokens, set
           <div>
             <div style={{ fontSize:11, fontWeight:600, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:"0.8px", marginBottom:8 }}>Día de examen</div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-              {[{v:null,l:"Sin examen"},...DIAS_SEMANA.map(d=>({v:d,l:DIAS_LABEL[d]}))].map(op=>(
+              {[{v:null,l:"Sin examen"},...DIAS_SEMANA.map(d=>({v:d,l:DIAS_LABEL[d]})),{v:"lunes_sig",l:"Lunes (sem.sig.)"},{v:"martes_sig",l:"Martes (sem.sig.)"}].map(op=>(
                 <button key={op.v||"none"} onClick={()=>setP("diaExamen",op.v)} style={{ padding:"7px 12px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600, border:"1.5px solid "+(cfg.diaExamen===op.v?(op.v?"#C8102E":"#1A3A6B"):"#E8E0D5"), background:cfg.diaExamen===op.v?(op.v?"#C8102E":"#1A3A6B"):"white", color:cfg.diaExamen===op.v?"white":"#7A7A7A" }}>{op.v?"🚫 ":""}{op.l}</button>
               ))}
             </div>
@@ -1003,7 +1004,7 @@ function ModuloConfig({ cfg, setCfg, alumnos, configId, setConfigId, tokens, set
           ) : (
             <div>
               <div style={{ background:"#FEF3E2", border:"1.5px solid #F5C47A", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:13, color:"#8A5A00" }}>
-                📋 Examen el <strong>{DIAS_LABEL[cfg.diaExamen]}</strong> — los marcados tienen prioridad y el motor les asigna el día más cercano al examen
+                📋 Examen el <strong>{cfg.diaExamen?.endsWith('_sig') ? (cfg.diaExamen==='lunes_sig'?'Lunes sem.sig.':'Martes sem.sig.') : DIAS_LABEL[cfg.diaExamen]}</strong> — los marcados tienen prioridad y el motor les asigna el día más cercano al examen
               </div>
               {alumnos.filter(a=>a.activo).map(a=>{
                 const sel = cfg.alumnosExamen.includes(a.id);
@@ -1529,30 +1530,8 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
   const totalAsignadas = planning ? Object.values(planning).flat().length : 0;
 
   // ── Fusión de prácticas contiguas (en render, inmune a tree-shaking) ──
-  // Fusión: une prácticas contiguas del mismo alumno en una sola tarjeta
-  const planningFusionado = useMemo(() => {
-    if (!planning) return null;
-    const toM = t => { const [h,m] = t.split(':'); return parseInt(h)*60+parseInt(m); };
-    const out = {};
-    for (const dia of Object.keys(planning)) {
-      const pracs = [...(planning[dia]||[])].sort((a,b)=>toM(a.desde)-toM(b.desde));
-      const fus = [];
-      for (const p of pracs) {
-        const ant = fus[fus.length-1];
-        if (ant && ant.alumnoId===p.alumnoId) {
-          const gap = toM(p.desde) - toM(ant.hasta);
-          if (gap >= 0 && gap <= 5) {
-            ant.hasta    = p.hasta;
-            ant.duracion = (ant.duracion||0) + (p.duracion||0);
-            continue;
-          }
-        }
-        fus.push({...p});
-      }
-      out[dia] = fus;
-    }
-    return out;
-  }, [planning]);
+  // Fusión: usa función exportada desde supabase.js (inmune a tree-shaking de Vite)
+  const planningFusionado = useMemo(() => fusionarPlanning(planning), [planning]);
 
 
   return (

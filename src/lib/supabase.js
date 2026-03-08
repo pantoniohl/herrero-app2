@@ -250,3 +250,30 @@ export async function resetNuevaSemana() {
   if (errores.length) throw new Error('Errores en reset:\n' + errores.join('\n'));
   return true;
 }
+
+// ── FUSIÓN DE PRÁCTICAS CONTIGUAS ────────────────────────────
+// Exportada aquí para que Vite no la elimine en el bundle del componente
+
+export function fusionarPlanning(planning) {
+  if (!planning) return null;
+  const toM = t => { const [h, m] = (t || '0:0').split(':'); return parseInt(h) * 60 + parseInt(m); };
+  const out = {};
+  for (const dia of Object.keys(planning)) {
+    const pracs = [...(planning[dia] || [])].sort((a, b) => toM(a.desde) - toM(b.desde));
+    const fus = [];
+    for (const p of pracs) {
+      const ant = fus[fus.length - 1];
+      if (ant && ant.alumnoId === p.alumnoId) {
+        const gap = toM(p.desde) - toM(ant.hasta);
+        if (gap >= 0 && gap <= 5) {
+          ant.hasta    = p.hasta;
+          ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
+          continue;
+        }
+      }
+      fus.push({ ...p });
+    }
+    out[dia] = fus;
+  }
+  return out;
+}
