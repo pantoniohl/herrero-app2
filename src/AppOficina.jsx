@@ -535,30 +535,6 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
     planning[dia].sort((a, b) => toMin(a.desde) - toMin(b.desde));
   }
 
-  // ── Fusionar prácticas contiguas del mismo alumno ──
-  // Condición: mismo alumno, contiguas en tiempo (p1.hasta === p2.desde)
-  // Para B: no se exige mismo profesor (el alumno puede tener distintos en cada pasada)
-  // Para C/C+E: solo 1 práctica/día, no aplica, pero la lógica es segura
-  for (const dia of diasSemana) {
-    const fusionadas = [];
-    for (const p of planning[dia]) {
-      const ant = fusionadas[fusionadas.length - 1];
-      // Contiguas: mismo alumno y la 2ª empieza <= 5 min después de que termine la 1ª
-      const gapMin = ant ? (toMin(p.desde) - toMin(ant.hasta)) : 999;
-      const contiguas = ant && ant.alumnoId === p.alumnoId && gapMin >= 0 && gapMin <= 5;
-      if (contiguas) {
-        ant.hasta    = p.hasta;
-        ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
-        ant.fusionada = true;
-        // Si los profesores difieren, marcar como doble profesor (info)
-        if (ant.profesor !== p.profesor) ant.profesor2 = p.profesor;
-      } else {
-        fusionadas.push({ ...p });
-      }
-    }
-    planning[dia] = fusionadas;
-  }
-
   return { planning, sinAsignar };
 }
 
@@ -605,6 +581,39 @@ function durLabel(min) {
   if (min < 60) return min + "min";
   const h = Math.floor(min / 60), m = min % 60;
   return m ? h + "h" + m + "min" : h + "h";
+}
+
+// Fusionar prácticas contiguas del mismo alumno en el planning
+// Se llama DESPUÉS de generar, en el componente
+function fusionarPlanning(raw) {
+  if (!raw) return raw;
+  const result = {};
+  for (const dia of Object.keys(raw)) {
+    const pracs = [...(raw[dia] || [])].sort((a,b) => {
+      const ta = parseInt(a.desde.replace(':',''),10);
+      const tb = parseInt(b.desde.replace(':',''),10);
+      return ta - tb;
+    });
+    const fus = [];
+    for (const p of pracs) {
+      const ant = fus[fus.length - 1];
+      if (ant && ant.alumnoId === p.alumnoId) {
+        // Calcular gap en minutos entre fin de la anterior y inicio de esta
+        const finAnt  = parseInt(ant.hasta.split(':')[0],10)*60 + parseInt(ant.hasta.split(':')[1],10);
+        const iniAct  = parseInt(p.desde.split(':')[0],10)*60   + parseInt(p.desde.split(':')[1],10);
+        const gap = iniAct - finAnt;
+        if (gap >= 0 && gap <= 5) {
+          ant.hasta    = p.hasta;
+          ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
+          if (ant.profesor !== p.profesor) ant.profExtra = p.profesor;
+          continue;
+        }
+      }
+      fus.push({ ...p });
+    }
+    result[dia] = fus;
+  }
+  return result;
 }
 
 const VEH_LABEL   = { renault_amarillo:"R.Amarillo(C)", renault_blanco:"R.Blanco(C)", trailer_renault:"Tráiler R.(C+E)", trailer_mercedes:"Tráiler M.(C+E)", audi_a3:"Audi A3", toyota_auris:"Toyota Auris" };
@@ -1448,7 +1457,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       });
 
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
-      setPlanning(res.planning);
+      setPlanning(fusionarPlanning(res.planning));
       setSinAsignar(res.sinAsignar);
     } catch(e) {
       console.error("Error generando planning:", e);
