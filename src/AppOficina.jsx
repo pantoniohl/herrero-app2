@@ -1748,6 +1748,64 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   const [disponibilidades, setDisponibilidades] = useState([]);
   const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
+  const [simulando, setSimulando] = useState(false);
+
+  const simularRespuestas = async () => {
+    if (!configId) return;
+    const pendientes = tokensLocales.filter(t => {
+      const respondio = new Set(disponibilidades.map(d => d.alumno_id));
+      return !respondio.has(t.alumno_id);
+    });
+    if (pendientes.length === 0) { alert('Todos los alumnos ya han respondido.'); return; }
+    if (!window.confirm(`¿Simular respuestas para ${pendientes.length} alumnos pendientes?`)) return;
+
+    setSimulando(true);
+    const DIAS = ['lunes','martes','miercoles','jueves','viernes'];
+    const FRANJAS = ['manana','tarde','noche'];
+
+    // Peso: 70% disponible la mayoría de días, 30% días sueltos
+    const genDias = () => {
+      const dias = {};
+      const nDias = Math.floor(Math.random() * 3) + 2; // 2-4 días
+      const diasSel = [...DIAS].sort(() => Math.random()-0.5).slice(0, nDias);
+      diasSel.forEach(dia => {
+        const nFranjas = Math.random() < 0.4 ? 3 : Math.random() < 0.6 ? 2 : 1;
+        dias[dia] = [...FRANJAS].sort(() => Math.random()-0.5).slice(0, nFranjas);
+      });
+      return dias;
+    };
+
+    let ok = 0, err = 0;
+    for (const tok of pendientes) {
+      try {
+        const alumno = alumnos.find(a => a.id === tok.alumno_id);
+        const esTransporte = alumno?.transporte;
+        // Alumnos con transporte: máx 2 días
+        const dias = {};
+        const nDias = esTransporte ? (Math.random() < 0.7 ? 2 : 1) : (Math.floor(Math.random()*3)+2);
+        const diasSel = [...DIAS].sort(() => Math.random()-0.5).slice(0, nDias);
+        diasSel.forEach(dia => {
+          const nFranjas = Math.random() < 0.5 ? 2 : 1;
+          dias[dia] = [...FRANJAS].sort(() => Math.random()-0.5).slice(0, nFranjas);
+        });
+        const pracDeseadas = esTransporte ? (Math.random() < 0.6 ? 2 : 1) : (Math.floor(Math.random()*3)+1);
+
+        const { error } = await supabase.from('disponibilidad').insert({
+          token_id: tok.id,
+          alumno_id: tok.alumno_id,
+          config_id: configId,
+          dias,
+          practicas_deseadas: pracDeseadas,
+        });
+        // Marcar token como usado
+        await supabase.from('tokens_alumno').update({ usado: true }).eq('id', tok.id);
+        if (error) err++; else ok++;
+      } catch(e) { err++; }
+    }
+    await cargar();
+    setSimulando(false);
+    alert(`✅ ${ok} respuestas simuladas${err > 0 ? ` · ⚠️ ${err} errores` : ''}`);
+  };
 
   const cargar = async () => {
     if (!configId) { setCargando(false); return; }
@@ -1790,11 +1848,18 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       {/* Cabecera + botón PDF */}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
         <div style={{ fontSize:13, fontWeight:700, color:"#1A3A6B" }}>📬 Respuestas · {semanaLabel ? semanaLabel({}) : ""}</div>
-        <button
-          onClick={()=>generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg||{})}
-          style={{ padding:"7px 14px", background:"#1A3A6B", color:"white", border:"none", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:11, fontWeight:700 }}>
-          🖨️ PDF Respuestas
-        </button>
+<div style={{ display:"flex", gap:8 }}>
+          <button
+            onClick={simularRespuestas} disabled={simulando}
+            style={{ padding:"7px 14px", background:"#2D2D2D", color:"#AAFFAA", border:"1px dashed #AAFFAA", borderRadius:20, cursor:simulando?"not-allowed":"pointer", fontFamily:"inherit", fontSize:11, fontWeight:700, opacity:simulando?0.6:1 }}>
+            {simulando ? "⏳ Simulando..." : "🎲 Simular respuestas"}
+          </button>
+          <button
+            onClick={()=>generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg||{})}
+            style={{ padding:"7px 14px", background:"#1A3A6B", color:"white", border:"none", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:11, fontWeight:700 }}>
+            🖨️ PDF Respuestas
+          </button>
+        </div>
       </div>
 
       {/* Contador */}
