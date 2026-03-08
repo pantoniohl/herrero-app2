@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
   getConfigActiva, guardarConfigBorrador, activarSemana as activarSemanaDB,
@@ -1481,7 +1481,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
   const totalAsignadas = planning ? Object.values(planning).flat().length : 0;
 
   // ── Fusión de prácticas contiguas (en render, inmune a tree-shaking) ──
-  const planningFusionado = React.useMemo(() => {
+  const planningFusionado = useMemo(() => {
     if (!planning) return null;
     const out = {};
     for (const dia of Object.keys(planning)) {
