@@ -3,7 +3,7 @@ import supabase, {
   getAlumnos, crearAlumno, actualizarAlumno,
   getConfigActiva, guardarConfigBorrador, activarSemana as activarSemanaDB,
   guardarPlanning, getPlanning, getDisponibilidades,
-  resetNuevaSemana, fusionarPlanning
+  resetNuevaSemana
 } from "./lib/supabase.js";
 
 // ── Credenciales oficina ──────────────────────────────────────
