@@ -1804,7 +1804,10 @@ function InformePlanningAlumno({ alumno, planning, cfg }) {
         <div style={{ width:42, height:42, borderRadius:"50%", background:"rgba(255,255,255,0.25)", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:15, flexShrink:0 }}>{iniciales}</div>
         <div style={{ flex:1 }}>
           <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{alumno.apellidos}, {alumno.nombre}</div>
-          <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>{alumno.localidad} · Permiso {alumno.permiso}{alumno.fase?" · "+alumno.fase:""}</div>
+          <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>
+            {alumno.localidad} · Permiso {alumno.permiso}{alumno.fase?" · "+alumno.fase:""}
+            {alumno.transporte && <span style={{ marginLeft:6, background:"rgba(255,255,255,0.25)", borderRadius:8, padding:"1px 7px", fontSize:10, fontWeight:700 }}>🚐 Con transporte</span>}
+          </div>
         </div>
         <div style={{ textAlign:"right" }}>
           <div style={{ color:"white", fontWeight:700, fontSize:16 }}>{todasAlumno.length}</div>
@@ -1819,18 +1822,12 @@ function InformePlanningAlumno({ alumno, planning, cfg }) {
           return (
             <div key={dia} style={{ marginBottom:8 }}>
               <div style={{ fontSize:11, fontWeight:700, color:"#1A3A6B", textTransform:"uppercase", letterSpacing:"0.7px", borderBottom:"1.5px solid #E8E0D5", paddingBottom:4, marginBottom:6 }}>{DIAS_LABEL[dia]}</div>
-              {pracs.map((p,i) => {
-                const cp = COLOR_PROF[p.profesor]||"#555";
-                return (
-                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid "+cp, marginBottom:4 }}>
-                    <div style={{ fontWeight:700, fontSize:13, minWidth:90, color:"#1A1A1A" }}>{p.desde}–{p.hasta}</div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:cp }}>{PROF_LABEL[p.profesor]}</div>
-                      <div style={{ fontSize:11, color:"#777", marginTop:1 }}>{VEH_LABEL[p.vehiculo]||"—"} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min</div>
-                    </div>
-                  </div>
-                );
-              })}
+              {pracs.map((p,i) => (
+                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid #1A3A6B", marginBottom:4 }}>
+                  <div style={{ fontWeight:800, fontSize:15, color:"#1A1A1A" }}>{p.desde}</div>
+                  <div style={{ fontSize:12, color:"#777" }}>{p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min</div>
+                </div>
+              ))}
             </div>
           );
         })}
@@ -1925,6 +1922,134 @@ function imprimirSeccion(id) {
   setTimeout(()=>URL.revokeObjectURL(url),15000);
 }
 
+// ── PDF RUTA DE RECOGIDAS ─────────────────────────────────
+function generarPDFRuta(planning, alumnos, cfg) {
+  // Alumnos con transporte que tienen prácticas esta semana
+  const alumnosTransporte = alumnos.filter(a =>
+    a.transporte && DIAS_SEMANA.some(d => (planning[d]||[]).some(p=>p.alumnoId===a.id))
+  );
+  if (!alumnosTransporte.length) {
+    alert('No hay alumnos con transporte asignados esta semana.');
+    return;
+  }
+
+  // Construir paradas por día
+  // Estructura: { dia: [ { alumno, desde, localidad, tipo } ] }
+  const paradasPorDia = {};
+  for (const dia of DIAS_SEMANA) {
+    const paradas = [];
+    for (const a of alumnosTransporte) {
+      const pracs = (planning[dia]||[]).filter(p=>p.alumnoId===a.id);
+      pracs.forEach(p => {
+        paradas.push({ alumno: a, desde: p.desde, localidad: a.localidad || 'Sin localidad', tipo: p.tipo, duracion: p.duracion });
+      });
+    }
+    // Ordenar por hora de inicio
+    paradas.sort((a,b) => a.desde.localeCompare(b.desde));
+    if (paradas.length) paradasPorDia[dia] = paradas;
+  }
+
+  if (!Object.keys(paradasPorDia).length) {
+    alert('No hay paradas con transporte esta semana.');
+    return;
+  }
+
+  // Agrupar por localidad para optimizar ruta
+  // Orden fijo de localidades (de más lejos a más cerca de Trujillo o por orden habitual)
+  const ORDEN_LOCALIDADES = ['Miajadas','Zorita','Abertura','Madrigalejo','Campo Lugar','Escurial','Robledillo de Trujillo','Aldea del Obispo','Garciaz','Jaraicejo','Santa Cruz de la Sierra'];
+
+  const ordenarParadas = (paradas) => {
+    // Agrupar por localidad
+    const grupos = {};
+    paradas.forEach(p => {
+      const loc = p.localidad;
+      if (!grupos[loc]) grupos[loc] = [];
+      grupos[loc].push(p);
+    });
+    // Ordenar localidades: primero las del array fijo, luego el resto, Trujillo al final
+    const locs = Object.keys(grupos).sort((a,b) => {
+      if (a === 'Trujillo') return 1;
+      if (b === 'Trujillo') return -1;
+      const ia = ORDEN_LOCALIDADES.indexOf(a);
+      const ib = ORDEN_LOCALIDADES.indexOf(b);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    // Reconstruir paradas en orden de localidad, dentro de cada localidad por hora
+    const result = [];
+    locs.forEach(loc => {
+      grupos[loc].sort((a,b)=>a.desde.localeCompare(b.desde)).forEach(p=>result.push(p));
+    });
+    return result;
+  };
+
+  // Generar HTML
+  let html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>Ruta de recogidas – ${semanaLabel(cfg)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    .header { background: #1A3A6B; color: white; padding: 16px 20px; border-radius: 10px; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 18px; }
+    .header p { margin: 4px 0 0; font-size: 12px; opacity: 0.85; }
+    .dia-block { background: white; border-radius: 10px; margin-bottom: 16px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .dia-header { background: #C8102E; color: white; padding: 10px 16px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #F0F4FF; color: #1A3A6B; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; text-align: left; }
+    td { padding: 9px 12px; border-bottom: 1px solid #F0EBE5; font-size: 13px; }
+    tr:last-child td { border-bottom: none; }
+    .hora { font-weight: 800; color: #1A1A1A; font-size: 15px; }
+    .localidad { font-weight: 700; color: #1A3A6B; }
+    .nombre { color: #333; }
+    .tipo-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 8px; }
+    .pista { background: #FFF3CD; color: #856404; }
+    .circ { background: #D4EDDA; color: #155724; }
+    .loc-sep { background: #F7F3EE; }
+    .loc-sep td { font-size: 11px; color: #888; font-weight: 600; padding: 5px 12px; letter-spacing: 0.5px; }
+    .footer { margin-top: 20px; text-align: center; font-size: 10px; color: #999; }
+    @media print { body { background: white; padding: 0; } }
+  </style></head><body>`;
+
+  html += `<div class="header"><h1>🚐 Ruta de Recogidas</h1><p>${semanaLabel(cfg)} · Autoescuela Herrero · 688 70 86 69</p></div>`;
+
+  let numDias = 0;
+  for (const dia of DIAS_SEMANA) {
+    if (!paradasPorDia[dia]) continue;
+    numDias++;
+    const paradasOrdenadas = ordenarParadas(paradasPorDia[dia]);
+    html += `<div class="dia-block"><div class="dia-header">${DIAS_LABEL[dia]}</div>`;
+    html += `<table><tr><th>#</th><th>Hora</th><th>Localidad</th><th>Alumno</th><th>Práctica</th></tr>`;
+    let prevLoc = null;
+    paradasOrdenadas.forEach((p, i) => {
+      if (p.localidad !== prevLoc) {
+        if (prevLoc !== null) {
+          html += `<tr class="loc-sep"><td colspan="5">📍 ${p.localidad}</td></tr>`;
+        }
+        prevLoc = p.localidad;
+      }
+      const tipoBadge = p.tipo === 'pista'
+        ? '<span class="tipo-badge pista">🏁 Pista</span>'
+        : '<span class="tipo-badge circ">🛣️ Circ.</span>';
+      html += `<tr>
+        <td style="color:#999;font-size:11px">${i+1}</td>
+        <td class="hora">${p.desde}</td>
+        <td class="localidad">${p.localidad}</td>
+        <td class="nombre">${p.alumno.apellidos}, ${p.alumno.nombre}</td>
+        <td>${tipoBadge} ${p.duracion}min</td>
+      </tr>`;
+    });
+    html += `</table></div>`;
+  }
+
+  html += `<div class="footer">Autoescuela Herrero · C/ Tenerías 6 bajo · Trujillo · 688 70 86 69 · herreroformacion.es</div></body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+
 function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
   const [vista, setVista] = useState("profesores");
   const [alumnoSel, setAlumnoSel] = useState(null);
@@ -1964,14 +2089,14 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
       const dp = pracs.filter(p=>p.dia===dia);
       if (!dp.length) continue;
       msg += "*"+DIAS_LABEL[dia].toUpperCase()+"*\n";
-      dp.forEach(p => { msg += "  "+p.desde+"-"+p.hasta+" · Prof: "+PROF_LABEL[p.profesor]+" · "+VEH_LABEL[p.vehiculo]+"\n"; });
+      dp.forEach(p => { msg += "  "+p.desde+" · "+( p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación")+"\n"; });
       msg += "\n";
     }
     msg += "_Autoescuela Herrero · 688 70 86 69_";
     return msg;
   };
 
-  const PROFS_CONFIG = { mamen:"688000001", javi:"688000002", pablo:"688000003", toni:"688000004" };
+  const PROFS_CONFIG = { mamen:"605285702", javi:"617190800", pablo:"622593677", toni:"655577578" };
 
   return (
     <div style={{ paddingBottom:180 }}>
@@ -2005,7 +2130,19 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
       })}
 
       {/* VISTA ALUMNOS */}
-      {vista==="alumnos" && alumnosConPracs.map(alumno => (
+      {vista==="alumnos" && (
+        <div>
+          {/* Botón ruta si hay alumnos con transporte */}
+          {alumnos.some(a=>a.transporte && DIAS_SEMANA.some(d=>(planning[d]||[]).some(p=>p.alumnoId===a.id))) && (
+            <div style={{ marginBottom:14, padding:"12px 14px", background:"#FFF3F3", borderRadius:10, border:"1.5px solid #C8102E", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:13, color:"#C8102E" }}>🚐 Hay alumnos con transporte esta semana</div>
+                <div style={{ fontSize:11, color:"#888", marginTop:2 }}>Genera el PDF de ruta con las paradas ordenadas</div>
+              </div>
+              <button onClick={()=>generarPDFRuta(planning,alumnos,cfg)} style={{ flexShrink:0, padding:"9px 18px", background:"#C8102E", color:"white", border:"none", borderRadius:20, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:800 }}>🚐 PDF Ruta</button>
+            </div>
+          )}
+          {alumnosConPracs.map(alumno => (
         <div key={alumno.id}>
           <div id={"informe-alumno-"+alumno.id}>
             <InformePlanningAlumno alumno={alumno} planning={planning} cfg={cfg} />
@@ -2019,6 +2156,8 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
           </div>
         </div>
       ))}
+        </div>
+      )}
 
       {/* VISTA SEMANAL */}
       {vista==="semanal" && (
