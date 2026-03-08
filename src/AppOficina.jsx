@@ -665,37 +665,6 @@ function durLabel(min) {
 
 // Fusionar prácticas contiguas del mismo alumno en el planning
 // Se llama DESPUÉS de generar, en el componente
-function fusionarPlanning(raw) {
-  if (!raw) return raw;
-  const result = {};
-  for (const dia of Object.keys(raw)) {
-    const pracs = [...(raw[dia] || [])].sort((a,b) => {
-      const ta = parseInt(a.desde.replace(':',''),10);
-      const tb = parseInt(b.desde.replace(':',''),10);
-      return ta - tb;
-    });
-    const fus = [];
-    for (const p of pracs) {
-      const ant = fus[fus.length - 1];
-      if (ant && ant.alumnoId === p.alumnoId) {
-        // Calcular gap en minutos entre fin de la anterior y inicio de esta
-        const finAnt  = parseInt(ant.hasta.split(':')[0],10)*60 + parseInt(ant.hasta.split(':')[1],10);
-        const iniAct  = parseInt(p.desde.split(':')[0],10)*60   + parseInt(p.desde.split(':')[1],10);
-        const gap = iniAct - finAnt;
-        if (gap >= 0 && gap <= 5) {
-          ant.hasta    = p.hasta;
-          ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
-          if (ant.profesor !== p.profesor) ant.profExtra = p.profesor;
-          continue;
-        }
-      }
-      fus.push({ ...p });
-    }
-    result[dia] = fus;
-  }
-  return result;
-}
-
 const VEH_LABEL   = { renault_amarillo:"R.Amarillo(C)", renault_blanco:"R.Blanco(C)", trailer_renault:"Tráiler R.(C+E)", trailer_mercedes:"Tráiler M.(C+E)", audi_a3:"Audi A3", toyota_auris:"Toyota Auris" };
 const VEHICULOS_PESADOS = ["renault_amarillo","renault_blanco","trailer_renault","trailer_mercedes"];
 
@@ -1554,7 +1523,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
 
   // Convierte franjas ["manana","tarde"] a tramos horarios
   const franjaATramos = (franjas) => {
-    const mapa = { manana:[{desde:"09:00",hasta:"14:00"}], tarde:[{desde:"14:00",hasta:"17:00"}], noche:[{desde:"17:00",hasta:"21:00"}] };
+    const mapa = { manana:[{desde:"09:00",hasta:"14:00"}], tarde:[{desde:"14:00",hasta:"21:00"}] }; // noche eliminada — tarde cubre 14-21h
     return franjas.flatMap(f => mapa[f] || []);
   };
 
@@ -1990,7 +1959,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       const nDias = Math.floor(Math.random() * 3) + 2; // 2-4 días
       const diasSel = [...DIAS].sort(() => Math.random()-0.5).slice(0, nDias);
       diasSel.forEach(dia => {
-        const nFranjas = Math.random() < 0.4 ? 3 : Math.random() < 0.6 ? 2 : 1;
+        const nFranjas = Math.random() < 0.6 ? 2 : 1;
         dias[dia] = [...FRANJAS].sort(() => Math.random()-0.5).slice(0, nFranjas);
       });
       return dias;
