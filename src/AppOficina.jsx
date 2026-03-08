@@ -667,29 +667,31 @@ function durLabel(min) {
 // Se llama DESPUÉS de generar, en el componente
 function fusionarPlanning(raw) {
   if (!raw) return raw;
+  const toMin = t => parseInt(t.split(':')[0],10)*60 + parseInt(t.split(':')[1],10);
   const result = {};
   for (const dia of Object.keys(raw)) {
-    const pracs = [...(raw[dia] || [])].sort((a,b) => {
-      const ta = parseInt(a.desde.replace(':',''),10);
-      const tb = parseInt(b.desde.replace(':',''),10);
-      return ta - tb;
-    });
+    // Ordenar por hora de inicio
+    const pracs = [...(raw[dia] || [])].sort((a,b) => toMin(a.desde) - toMin(b.desde));
     const fus = [];
     for (const p of pracs) {
-      const ant = fus[fus.length - 1];
-      if (ant && ant.alumnoId === p.alumnoId) {
-        // Calcular gap en minutos entre fin de la anterior y inicio de esta
-        const finAnt  = parseInt(ant.hasta.split(':')[0],10)*60 + parseInt(ant.hasta.split(':')[1],10);
-        const iniAct  = parseInt(p.desde.split(':')[0],10)*60   + parseInt(p.desde.split(':')[1],10);
-        const gap = iniAct - finAnt;
-        if (gap >= 0 && gap <= 5) {
-          ant.hasta    = p.hasta;
-          ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
-          if (ant.profesor !== p.profesor) ant.profExtra = p.profesor;
-          continue;
+      // Buscar hacia atrás la última práctica del mismo alumno Y mismo profesor
+      let fusionado = false;
+      for (let i = fus.length - 1; i >= 0; i--) {
+        const ant = fus[i];
+        if (ant.alumnoId === p.alumnoId && ant.profesor === p.profesor) {
+          const finAnt = toMin(ant.hasta);
+          const iniAct = toMin(p.desde);
+          const gap = iniAct - finAnt;
+          // Fusionar si son contiguas (gap 0) o casi contiguas (<=5 min)
+          if (gap >= 0 && gap <= 5) {
+            ant.hasta    = p.hasta;
+            ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
+            fusionado = true;
+          }
+          break; // Encontramos la última del mismo alumno+profesor, no seguir
         }
       }
-      fus.push({ ...p });
+      if (!fusionado) fus.push({ ...p });
     }
     result[dia] = fus;
   }
