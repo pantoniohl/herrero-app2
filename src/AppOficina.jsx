@@ -466,8 +466,27 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
 
           } else {
             // Módulo B: no necesita vehículo específico
+            // Si es la 2ª práctica del día, DEBE ser contigua a la 1ª (optimización)
+            let tramosParaB = tramosComunes;
+            if (asignadasHoy >= 1) {
+              // Buscar la práctica anterior del mismo alumno en este día
+              const pracAnterior = planning[dia]
+                .filter(p => p.alumnoId === alumno.id)
+                .sort((a, b) => toMin(b.hasta) - toMin(a.hasta))[0]; // la más reciente
+              if (pracAnterior) {
+                const inicioContiguo = toMin(pracAnterior.hasta);
+                // Solo aceptar el tramo que empieza exactamente donde terminó la anterior
+                tramosParaB = tramosComunes
+                  .map(t => ({
+                    desde: Math.max(t.desde, inicioContiguo),
+                    hasta: t.hasta,
+                  }))
+                  .filter(t => t.desde === inicioContiguo && (t.hasta - t.desde) >= duracion);
+              }
+            }
             const hueco = elegirHueco(
-              tramosComunes, duracion,
+              tramosParaB.length ? tramosParaB : tramosComunes,
+              duracion,
               ocupacionesProf,
               capProf
             );
@@ -557,13 +576,12 @@ const PROF_LABEL  = { mamen:"Mamen", javi:"Javi", pablo:"Pablo", toni:"Toni" };
 const COLOR_PROF  = { mamen:"#1A6B3A", javi:"#1A3A6B", pablo:"#C8102E", toni:"#6B1A6B" };
 const COLOR_PERM  = { B:"#1A6B3A", C:"#1A3A6B", "C+E":"#6B1A6B" };
 // Formato duración: 30 → "30min" · 60 → "1h" · 90 → "1h30min"
-const durLabel = (min) => {
+function durLabel(min) {
   if (!min) return "";
-  if (min < 60) return `${min}min`;
-  const h = Math.floor(min/60), m = min%60;
-  return m ? `${h}h${m}min` : `${h}h`;
-};
-const durLabelShort = (min) => durLabel(min); // alias
+  if (min < 60) return min + "min";
+  const h = Math.floor(min / 60), m = min % 60;
+  return m ? h + "h" + m + "min" : h + "h";
+}
 
 const VEH_LABEL   = { renault_amarillo:"R.Amarillo(C)", renault_blanco:"R.Blanco(C)", trailer_renault:"Tráiler R.(C+E)", trailer_mercedes:"Tráiler M.(C+E)", audi_a3:"Audi A3", toyota_auris:"Toyota Auris" };
 const VEHICULOS_PESADOS = ["renault_amarillo","renault_blanco","trailer_renault","trailer_mercedes"];
