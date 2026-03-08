@@ -964,19 +964,53 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
         const nombre = (row[0]||"").toString().trim();
         const apellidos = (row[1]||"").toString().trim();
         if (!nombre || !apellidos) continue;
+        const permiso   = (row[4]||"B").toString().trim().toUpperCase();
+        const fase      = (row[5]||"").toString().trim().toLowerCase() || null;
+        const profExcel = (row[6]||"").toString().trim();
+        const vehExcel  = (row[7]||"").toString().trim();
+        const transporte= (row[8]||"NO").toString().trim().toUpperCase() === "SI";
+        const maxPrac   = row[9] ? parseInt(row[9]) : (permiso === "B" ? (transporte ? 4 : 6) : 2);
+
+        // C y C+E → localidad siempre Trujillo
+        const localidad = (permiso === "B")
+          ? (row[3]||"Trujillo").toString().trim()
+          : "Trujillo";
+
+        // Vehículo automático según permiso+fase
+        let cocheAsignado = null;
+        if (permiso === "B") {
+          cocheAsignado = vehExcel || null; // lo que eligió en Excel
+        } else if (permiso === "C") {
+          cocheAsignado = (fase === "pista") ? "renault_amarillo" : "renault_blanco";
+        } else if (permiso === "C+E") {
+          cocheAsignado = (fase === "pista") ? "trailer_mercedes" : "trailer_renault";
+        }
+
+        // Normalizar nombre vehículo B a clave interna
+        const VEH_MAP = {"audi a3":"audi","toyota auris":"auris"};
+        if (permiso === "B" && cocheAsignado) {
+          cocheAsignado = VEH_MAP[cocheAsignado.toLowerCase()] || cocheAsignado;
+        }
+
+        // Profesor preferente (normalizar a clave)
+        const PROF_MAP = {"mamen":"mamen","javi":"javi","pablo":"pablo","toni":"toni"};
+        const profesorFijo = PROF_MAP[profExcel.toLowerCase()] || null;
+
         const alumno = {
           nombre,
           apellidos,
-          telefono: (row[2]||"").toString().trim(),
-          localidad: (row[3]||"Trujillo").toString().trim(),
-          permiso: (row[4]||"B").toString().trim().toUpperCase(),
-          fase: (row[5]||"").toString().trim().toLowerCase() || null,
-          bono: (row[6]||"NO").toString().trim().toUpperCase() === "SI",
-          bono_restantes: row[7] ? parseInt(row[7]) : null,
-          transporte: (row[8]||"NO").toString().trim().toUpperCase() === "SI",
-          max_practicas_semana: row[9] ? parseInt(row[9]) : 6,
-          activo: true,
-          fecha_alta: new Date().toISOString().slice(0,10),
+          telefono:           (row[2]||"").toString().trim(),
+          localidad,
+          permiso,
+          fase,
+          bono:               false,
+          bono_restantes:     null,
+          transporte,
+          max_practicas_semana: maxPrac,
+          profesor_fijo:      profesorFijo,
+          coche_asignado:     cocheAsignado,
+          activo:             true,
+          fecha_alta:         new Date().toISOString().slice(0,10),
         };
         const { data, error } = await supabase.from("alumnos").insert(alumno).select().single();
         if (error) { console.error("Error insert:", error); throw new Error(error.message); }
