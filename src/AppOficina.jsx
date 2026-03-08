@@ -1982,7 +1982,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
 
     setSimulando(true);
     const DIAS = ['lunes','martes','miercoles','jueves','viernes'];
-    const FRANJAS = ['manana','mediodia','tarde'];: no se dan clases en esa franja
+    const FRANJAS = ['manana','mediodia','tarde']; // Sin noche
 
     // Peso: 70% disponible la mayoría de días, 30% días sueltos
     const genDias = () => {
