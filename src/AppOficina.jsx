@@ -987,7 +987,7 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
         }
 
         // Normalizar nombre vehículo B a clave interna
-        const VEH_MAP = {"audi a3":"audi","toyota auris":"auris"};
+        const VEH_MAP = {"audi a3":"audi_a3","toyota auris":"toyota_auris","audi_a3":"audi_a3","toyota_auris":"toyota_auris"};
         if (permiso === "B" && cocheAsignado) {
           cocheAsignado = VEH_MAP[cocheAsignado.toLowerCase()] || cocheAsignado;
         }
