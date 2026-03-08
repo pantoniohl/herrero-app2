@@ -233,3 +233,20 @@ export async function publicarPlanning(configId) {
   if (error) throw error;
   return data;
 }
+
+// ── RESET NUEVA SEMANA ────────────────────────────────────────
+
+export async function resetNuevaSemana() {
+  // Orden: planning → disponibilidad → tokens → config → alumnos
+  // (respetar claves foráneas si las hubiera)
+  const errores = [];
+
+  const tablas = ['planning', 'disponibilidad', 'tokens_alumno', 'configuracion_semanal', 'alumnos'];
+  for (const tabla of tablas) {
+    const { error } = await supabase.from(tabla).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) errores.push(`${tabla}: ${error.message}`);
+  }
+
+  if (errores.length) throw new Error('Errores en reset:\n' + errores.join('\n'));
+  return true;
+}
