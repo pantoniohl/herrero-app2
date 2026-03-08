@@ -333,9 +333,7 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
       const limitePista = toMin(configSemanal.horasPista?.[dia] || HORA_MAX);
 
       // Cuántas prácticas puede tener el alumno este día
-      const maxHoy = alumno.permiso === "B"
-        ? (alumno.transporte === "autoescuela" ? 2 : 3)
-        : 1;
+      const maxHoy = alumno.permiso === "B" ? 2 : 1; // B: máx 2 seguidas/día · C y C+E: máx 1/día
       let asignadasHoy = 0;
 
       // Intentar asignar maxHoy prácticas este día
@@ -558,6 +556,15 @@ const PROFS       = ["mamen","javi","pablo","toni"];
 const PROF_LABEL  = { mamen:"Mamen", javi:"Javi", pablo:"Pablo", toni:"Toni" };
 const COLOR_PROF  = { mamen:"#1A6B3A", javi:"#1A3A6B", pablo:"#C8102E", toni:"#6B1A6B" };
 const COLOR_PERM  = { B:"#1A6B3A", C:"#1A3A6B", "C+E":"#6B1A6B" };
+// Formato duración: 30 → "30min" · 60 → "1h" · 90 → "1h30min"
+const durLabel = (min) => {
+  if (!min) return "";
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min/60), m = min%60;
+  return m ? `${h}h${m}min` : `${h}h`;
+};
+const durLabelShort = (min) => durLabel(min); // alias
+
 const VEH_LABEL   = { renault_amarillo:"R.Amarillo(C)", renault_blanco:"R.Blanco(C)", trailer_renault:"Tráiler R.(C+E)", trailer_mercedes:"Tráiler M.(C+E)", audi_a3:"Audi A3", toyota_auris:"Toyota Auris" };
 const VEHICULOS_PESADOS = ["renault_amarillo","renault_blanco","trailer_renault","trailer_mercedes"];
 
@@ -1273,10 +1280,10 @@ function generarPDFGeneral(planning, alumnos, cfg) {
       html += `<h3>${DIAS_LABEL[dia]}</h3>`;
       for (const p of pracs) {
         html += `<div class="practica" style="border-left-color:${cp}">
-          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="hora">${p.desde} · ${durLabel(p.duracion)}</div>
           <div class="info">
             <div class="nombre">${p.alumnoNombre}</div>
-            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"}</div>
           </div>
         </div>`;
       }
@@ -1300,10 +1307,10 @@ function generarPDFsProfesores(planning, alumnos, cfg) {
       html += `<h2>${DIAS_LABEL[dia]} <span style="font-size:11px;font-weight:400">${Math.floor(minDia/60)}h ${minDia%60>0?minDia%60+"min":""}</span></h2>`;
       for (const p of pracs) {
         html += `<div class="practica" style="border-left-color:${cp}">
-          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="hora">${p.desde} · ${durLabel(p.duracion)}</div>
           <div class="info">
             <div class="nombre">${p.alumnoNombre}</div>
-            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+            <div class="detalle">${chipPermiso(p.permiso)} ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"}</div>
           </div>
         </div>`;
       }
@@ -1332,10 +1339,10 @@ function generarPDFsAlumnos(planning, alumnos, cfg) {
       for (const p of pracs) {
         const cp = colorProf(p.profesor);
         html += `<div class="practica" style="border-left-color:${cp}">
-          <div class="hora">${p.desde}–${p.hasta}</div>
+          <div class="hora">${p.desde} · ${durLabel(p.duracion)}</div>
           <div class="info">
             <div class="nombre" style="color:${cp}">${PROF_LABEL[p.profesor]}</div>
-            <div class="detalle">${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"} · ${p.duracion}min</div>
+            <div class="detalle">${p.desde} · ${durLabel(p.duracion)} · ${VEH_LABEL[p.vehiculo]||"—"} · ${p.tipo==="pista"?"🏁 Pista":"Circulación"}</div>
           </div>
         </div>`;
       }
@@ -1352,7 +1359,7 @@ function ChipPractica({ p, onClick }) {
   const cp = COLOR_PROF[p.profesor]||"#555";
   return (
     <div onClick={onClick} style={{ background:"white", borderRadius:8, borderLeft:"3px solid "+cp, border:"1px solid "+cp+"33", borderLeftWidth:3, borderLeftColor:cp, padding:"8px 10px", marginBottom:4, cursor:"pointer" }}>
-      <div style={{ fontSize:11, fontWeight:700, color:cp }}>{p.desde}–{p.hasta} <span style={{ fontSize:10, color:"#9A9A9A", fontWeight:400 }}>{p.duracion}min</span></div>
+      <div style={{ fontSize:11, fontWeight:700, color:cp }}>{p.desde} <span style={{ fontSize:10, color:"#9A9A9A", fontWeight:600 }}>· {durLabel(p.duracion)}</span></div>
       <div style={{ fontSize:13, fontWeight:700, color:"#1C1C1C", marginTop:1 }}>{p.alumnoNombre}</div>
       <div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap" }}>
         <Badge color={COLOR_PERM[p.permiso]}>{p.permiso}</Badge>
@@ -1541,7 +1548,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                           <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, padding:"6px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid "+(COLOR_PROF[p.profesor]||"#888") }}>
                             <div style={{ flex:1 }}>
                               <div style={{ fontSize:13, fontWeight:700 }}>{p.alumnoNombre}</div>
-                              <div style={{ fontSize:11, color:"#7A7A7A" }}>{p.desde}–{p.hasta} · {p.duracion}min · {PROF_LABEL[p.profesor]}</div>
+                              <div style={{ fontSize:11, color:"#7A7A7A" }}>{p.desde} · {durLabel(p.duracion)} · {PROF_LABEL[p.profesor]}</div>
                             </div>
                             <div style={{ display:"flex", gap:4 }}>
                               {p.tipo==="pista" && <span style={{ fontSize:10, color:"#D4700A", fontWeight:700 }}>🏁Pista</span>}
@@ -1575,7 +1582,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
               </div>
               <div style={{ background:COLOR_PROF[modalP.p.profesor]+"11", border:"1px solid "+COLOR_PROF[modalP.p.profesor]+"33", borderRadius:12, padding:"14px 16px", marginBottom:16 }}>
                 <div style={{ fontSize:17, fontWeight:800 }}>{modalP.p.alumnoNombre}</div>
-                <div style={{ fontSize:14, color:COLOR_PROF[modalP.p.profesor], fontWeight:700, marginTop:4 }}>{DIAS_LABEL[modalP.dia]} · {modalP.p.desde}–{modalP.p.hasta}</div>
+                <div style={{ fontSize:14, color:COLOR_PROF[modalP.p.profesor], fontWeight:700, marginTop:4 }}>{DIAS_LABEL[modalP.dia]} · {modalP.p.desde} · {durLabel(modalP.p.duracion)}</div>
                 <div style={{ display:"flex", gap:6, marginTop:8 }}>
                   <Badge color={COLOR_PERM[modalP.p.permiso]}>{modalP.p.permiso}</Badge>
                   {modalP.p.tipo==="pista"&&<Badge color="#D4700A">🏁 Pista</Badge>}
@@ -2132,12 +2139,12 @@ function InformePlanningProfesor({ profKey, planning, cfg }) {
               </div>
               {pracs.map((p,i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F9FF", borderRadius:8, borderLeft:"3px solid "+cp, marginBottom:4 }}>
-                  <div style={{ fontWeight:700, fontSize:13, minWidth:90, color:"#1A1A1A" }}>{p.desde}–{p.hasta}</div>
+                  <div style={{ fontWeight:700, fontSize:13, minWidth:90, color:"#1A1A1A" }}>{p.desde} <span style={{fontWeight:400,color:"#888",fontSize:11}}>· {durLabel(p.duracion)}</span></div>
                   <div style={{ flex:1 }}>
                     <div style={{ fontWeight:700, fontSize:13 }}>{p.alumnoNombre}</div>
                     <div style={{ fontSize:11, color:"#777", marginTop:1 }}>
                       <Badge color={COLOR_PERM[p.permiso]}>{p.permiso}</Badge>
-                      {" "}{VEH_LABEL[p.vehiculo]||"—"} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min
+                      {" "}{VEH_LABEL[p.vehiculo]||"—"} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"}
                     </div>
                   </div>
                 </div>
@@ -2182,7 +2189,7 @@ function InformePlanningAlumno({ alumno, planning, cfg }) {
               {pracs.map((p,i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid #1A3A6B", marginBottom:4 }}>
                   <div style={{ fontWeight:800, fontSize:15, color:"#1A1A1A" }}>{p.desde}</div>
-                  <div style={{ fontSize:12, color:"#777" }}>{p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"} · {p.duracion}min</div>
+                  <div style={{ fontSize:12, color:"#777" }}>{p.desde} · {durLabel(p.duracion)} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"}</div>
                 </div>
               ))}
             </div>
@@ -2393,7 +2400,7 @@ function generarPDFRuta(planning, alumnos, cfg) {
         <td class="hora">${p.desde}</td>
         <td class="localidad">${p.localidad}</td>
         <td class="nombre">${p.alumno.apellidos}, ${p.alumno.nombre}</td>
-        <td>${tipoBadge} ${p.duracion}min</td>
+        <td>${tipoBadge} ${durLabel(p.duracion)}</td>
       </tr>`;
     });
     html += `</table></div>`;
@@ -2431,7 +2438,7 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
       const dp = pracs.filter(p=>p.dia===dia);
       if (!dp.length) continue;
       msg += "*"+DIAS_LABEL[dia].toUpperCase()+"*\n";
-      dp.forEach(p => { msg += "  "+p.desde+"-"+p.hasta+" → "+p.alumnoNombre+" ("+p.permiso+") "+VEH_LABEL[p.vehiculo]+"\n"; });
+      dp.forEach(p => { msg += "  "+p.desde+" ("+durLabel(p.duracion)+") → "+p.alumnoNombre+" ("+p.permiso+") "+VEH_LABEL[p.vehiculo]+"\n"; });
       msg += "\n";
     }
     msg += "_Autoescuela Herrero_";
