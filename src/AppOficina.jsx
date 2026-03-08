@@ -350,12 +350,15 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
     let diasAsignados = 0;
     const diasDisponibles = alumno.disponibilidad || {}; // { [dia]: { estado, desde, hasta } }
 
-    // Para alumnos de examen: ordenar días por proximidad al día de examen
+    // Para alumnos de examen: priorizar días ANTERIORES más próximos al examen
+    // (el día más cercano antes del examen es donde mejor prepararlos)
     const diasOrdenados = alumnosExamen.has(alumno.id) && configSemanal.diaExamen
       ? [...diasSemana].sort((a, b) => {
-          const distA = Math.abs((DIAS_ORDEN[a]??99) - diaExamenOrden);
-          const distB = Math.abs((DIAS_ORDEN[b]??99) - diaExamenOrden);
-          return distA - distB;
+          const oA = DIAS_ORDEN[a] ?? 99;
+          const oB = DIAS_ORDEN[b] ?? 99;
+          const antA = oA < diaExamenOrden ? diaExamenOrden - oA : 999; // días anteriores: distancia positiva pequeña
+          const antB = oB < diaExamenOrden ? diaExamenOrden - oB : 999;
+          return antA - antB; // más cercano anterior primero; días posteriores van al final
         })
       : diasSemana;
 
@@ -456,26 +459,6 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
           const ocB = getOcup(ocupProf, b + "_" + dia).length;
           return ocB - ocA;
         });
-
-        // Ordenar profesores según criterio
-        profesoresCandidatos.sort((a, b) => {
-          if (alumno.permiso === "B") {
-            // Prioridad fija: Mamen > Javi > Toni
-            const pa = PRIORIDAD_B.indexOf(a);
-            const pb = PRIORIDAD_B.indexOf(b);
-            if (pa !== pb) return pa - pb;
-          } else {
-            // C y C+E: Pablo primero, luego compacidad
-            const pa = PRIORIDAD_PESADOS.indexOf(a);
-            const pb = PRIORIDAD_PESADOS.indexOf(b);
-            if (pa !== pb) return pa - pb;
-          }
-          // Desempate: quien ya tiene prácticas ese día (compacidad)
-          const ocA = getOcup(ocupProf, a + "_" + dia).length;
-          const ocB = getOcup(ocupProf, b + "_" + dia).length;
-          return ocB - ocA;
-        });
-
         for (const profKey of profesoresCandidatos) {
           const profConfigDia = configSemanal.profesores[profKey]?.[dia] || configSemanal.profesores[profKey]?.dias?.[dia];
           const capProf = profConfigDia?.capBloqueo;
