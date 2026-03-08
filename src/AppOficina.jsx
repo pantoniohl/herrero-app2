@@ -535,24 +535,23 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
     planning[dia].sort((a, b) => toMin(a.desde) - toMin(b.desde));
   }
 
-  // ── Fusionar prácticas contiguas del mismo alumno+profesor ──
-  // Si un alumno tiene 2 prácticas seguidas (p1.hasta === p2.desde, mismo profesor),
-  // se unen en una sola entrada con duracion sumada para mostrar en UI e informes
+  // ── Fusionar prácticas contiguas del mismo alumno ──
+  // Condición: mismo alumno, contiguas en tiempo (p1.hasta === p2.desde)
+  // Para B: no se exige mismo profesor (el alumno puede tener distintos en cada pasada)
+  // Para C/C+E: solo 1 práctica/día, no aplica, pero la lógica es segura
   for (const dia of diasSemana) {
     const fusionadas = [];
     for (const p of planning[dia]) {
       const ant = fusionadas[fusionadas.length - 1];
-      if (
-        ant &&
-        ant.alumnoId === p.alumnoId &&
-        ant.profesor  === p.profesor  &&
-        ant.permiso   === p.permiso   &&
-        ant.hasta     === p.desde     // contiguas exactas
-      ) {
-        // Fusionar: extender la anterior
+      // Contiguas: mismo alumno y la 2ª empieza <= 5 min después de que termine la 1ª
+      const gapMin = ant ? (toMin(p.desde) - toMin(ant.hasta)) : 999;
+      const contiguas = ant && ant.alumnoId === p.alumnoId && gapMin >= 0 && gapMin <= 5;
+      if (contiguas) {
         ant.hasta    = p.hasta;
         ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
         ant.fusionada = true;
+        // Si los profesores difieren, marcar como doble profesor (info)
+        if (ant.profesor !== p.profesor) ant.profesor2 = p.profesor;
       } else {
         fusionadas.push({ ...p });
       }
