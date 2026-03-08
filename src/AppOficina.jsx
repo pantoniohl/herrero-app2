@@ -1318,6 +1318,7 @@ function chipPermiso(permiso) {
 }
 
 function generarPDFGeneral(planning, alumnos, cfg) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   let html = `<div class="cabecera"><h1>AUTOESCUELA HERRERO — Planning General</h1><p>${semanaLabel(cfg)}</p></div>`;
   for (const profKey of ["mamen","javi","pablo","toni"]) {
     const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
@@ -1344,6 +1345,7 @@ function generarPDFGeneral(planning, alumnos, cfg) {
 }
 
 function generarPDFsProfesores(planning, alumnos, cfg) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   for (const profKey of ["mamen","javi","pablo","toni"]) {
     const todasProf = DIAS_SEMANA.flatMap(d => (planning[d]||[]).filter(p=>p.profesor===profKey));
     if (!todasProf.length) continue;
@@ -1371,6 +1373,7 @@ function generarPDFsProfesores(planning, alumnos, cfg) {
 }
 
 function generarPDFsAlumnos(planning, alumnos, cfg) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const alumnosConPracs = alumnos.filter(a =>
     DIAS_SEMANA.some(d => (planning[d]||[]).some(p => p.alumnoId === a.id))
   );
@@ -1421,6 +1424,8 @@ function ChipPractica({ p, onClick }) {
 }
 
 function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsignar, setSinAsignar }) {
+  // durLabel definida dentro del componente para evitar tree-shaking
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const [diaActivo, setDiaActivo] = useState("lunes");
   const [vista, setVista] = useState("dia");
   const [modalP, setModalP] = useState(null);
@@ -1457,7 +1462,36 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       });
 
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
-      setPlanning(fusionarPlanning(res.planning));
+      // Fusionar prácticas contiguas inline (no-tree-shake)
+      const rawPlanning = res.planning;
+      const diasFus = Object.keys(rawPlanning);
+      const planningFusionado = {};
+      for (let _di = 0; _di < diasFus.length; _di++) {
+        const _dia = diasFus[_di];
+        const _pracs = (rawPlanning[_dia] || []).slice().sort((a,b)=>{
+          const ta = parseInt(a.desde)*100 + parseInt(a.desde.split(':')[1]||0);
+          const tb = parseInt(b.desde)*100 + parseInt(b.desde.split(':')[1]||0);
+          return ta - tb;
+        });
+        const _fus = [];
+        for (let _pi = 0; _pi < _pracs.length; _pi++) {
+          const _p = _pracs[_pi];
+          const _ant = _fus[_fus.length - 1];
+          if (_ant && _ant.alumnoId === _p.alumnoId) {
+            const _h1 = _ant.hasta.split(':'); const _h2 = _p.desde.split(':');
+            const _fin = parseInt(_h1[0])*60 + parseInt(_h1[1]);
+            const _ini = parseInt(_h2[0])*60 + parseInt(_h2[1]);
+            if (_ini - _fin <= 5 && _ini >= _fin) {
+              _ant.hasta = _p.hasta;
+              _ant.duracion = (_ant.duracion||0) + (_p.duracion||0);
+              continue;
+            }
+          }
+          _fus.push(Object.assign({}, _p));
+        }
+        planningFusionado[_dia] = _fus;
+      }
+      setPlanning(planningFusionado);
       setSinAsignar(res.sinAsignar);
     } catch(e) {
       console.error("Error generando planning:", e);
@@ -2055,6 +2089,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
 }
 
 function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const [busqueda, setBusqueda] = useState("");
   const [alumnosRespondieron, setAlumnosRespondieron] = useState(new Set());
   const BASE_URL = window.location.origin;
@@ -2339,6 +2374,7 @@ function imprimirSeccion(id) {
 
 // ── PDF RUTA DE RECOGIDAS ─────────────────────────────────
 function generarPDFRuta(planning, alumnos, cfg) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   // Alumnos con transporte que tienen prácticas esta semana
   const alumnosTransporte = alumnos.filter(a =>
     a.transporte && DIAS_SEMANA.some(d => (planning[d]||[]).some(p=>p.alumnoId===a.id))
@@ -2466,6 +2502,7 @@ function generarPDFRuta(planning, alumnos, cfg) {
 
 
 function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
+  const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const [vista, setVista] = useState("profesores");
   const [alumnoSel, setAlumnoSel] = useState(null);
 
