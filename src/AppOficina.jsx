@@ -1462,36 +1462,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       });
 
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
-      // Fusionar prácticas contiguas inline (no-tree-shake)
-      const rawPlanning = res.planning;
-      const diasFus = Object.keys(rawPlanning);
-      const planningFusionado = {};
-      for (let _di = 0; _di < diasFus.length; _di++) {
-        const _dia = diasFus[_di];
-        const _pracs = (rawPlanning[_dia] || []).slice().sort((a,b)=>{
-          const ta = parseInt(a.desde)*100 + parseInt(a.desde.split(':')[1]||0);
-          const tb = parseInt(b.desde)*100 + parseInt(b.desde.split(':')[1]||0);
-          return ta - tb;
-        });
-        const _fus = [];
-        for (let _pi = 0; _pi < _pracs.length; _pi++) {
-          const _p = _pracs[_pi];
-          const _ant = _fus[_fus.length - 1];
-          if (_ant && _ant.alumnoId === _p.alumnoId) {
-            const _h1 = _ant.hasta.split(':'); const _h2 = _p.desde.split(':');
-            const _fin = parseInt(_h1[0])*60 + parseInt(_h1[1]);
-            const _ini = parseInt(_h2[0])*60 + parseInt(_h2[1]);
-            if (_ini - _fin <= 5 && _ini >= _fin) {
-              _ant.hasta = _p.hasta;
-              _ant.duracion = (_ant.duracion||0) + (_p.duracion||0);
-              continue;
-            }
-          }
-          _fus.push(Object.assign({}, _p));
-        }
-        planningFusionado[_dia] = _fus;
-      }
-      setPlanning(planningFusionado);
+      setPlanning(res.planning);
       setSinAsignar(res.sinAsignar);
     } catch(e) {
       console.error("Error generando planning:", e);
@@ -1509,11 +1480,37 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
 
   const totalAsignadas = planning ? Object.values(planning).flat().length : 0;
 
+  // ── Fusión de prácticas contiguas (en render, inmune a tree-shaking) ──
+  const planningFusionado = React.useMemo(() => {
+    if (!planning) return null;
+    const out = {};
+    for (const dia of Object.keys(planning)) {
+      const pracs = [...(planning[dia]||[])].sort((a,b)=>{
+        const ma = parseInt(a.desde)*60+parseInt(a.desde.split(':')[1]);
+        const mb = parseInt(b.desde)*60+parseInt(b.desde.split(':')[1]);
+        return ma-mb;
+      });
+      const fus = [];
+      for (const p of pracs) {
+        const ant = fus[fus.length-1];
+        if (ant && ant.alumnoId===p.alumnoId) {
+          const fa=parseInt(ant.hasta)*60+parseInt(ant.hasta.split(':')[1]);
+          const fb=parseInt(p.desde)*60+parseInt(p.desde.split(':')[1]);
+          if (fb-fa<=5 && fb>=fa) { ant.hasta=p.hasta; ant.duracion=(ant.duracion||0)+(p.duracion||0); continue; }
+        }
+        fus.push({...p});
+      }
+      out[dia]=fus;
+    }
+    return out;
+  }, [planning]);
+
+
   return (
     <div>
       <button onClick={ejecutar} disabled={generando} style={{ width:"100%", padding:14, background:generando?"#5A5A5A":"#1A3A6B", color:"white", border:"none", borderRadius:12, fontFamily:"inherit", fontSize:15, fontWeight:700, cursor:generando?"not-allowed":"pointer", boxShadow:"0 4px 16px rgba(26,58,107,0.3)", marginBottom:12 }}>{generando ? "⏳ Generando..." : "⚡ Generar planning"}</button>
 
-      {planning && <>
+      {planningFusionado && <>
         <div style={{ display:"flex", gap:8, marginBottom:12 }}>
           {[{l:"Asignadas",v:totalAsignadas,c:"#1A6B3A"},{l:"Sin asignar",v:sinAsignar.length,c:sinAsignar.length>0?"#C8102E":"#9A9A9A"}].map((x,i)=>(
             <div key={i} style={{ background:"white", borderRadius:10, padding:"10px 14px", border:"1px solid #E8E0D5", flex:1, textAlign:"center" }}>
@@ -1547,21 +1544,21 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           <div style={{ display:"flex", gap:6, marginBottom:12, overflowX:"auto" }}>
             {DIAS_SEMANA.map(d=>(
               <button key={d} onClick={()=>setDiaActivo(d)} style={{ flex:"0 0 auto", padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600, border:"1.5px solid "+(diaActivo===d?"#1A3A6B":"#E8E0D5"), background:diaActivo===d?"#1A3A6B":"white", color:diaActivo===d?"white":"#7A7A7A" }}>
-                {DIAS_LABEL[d]} <span style={{ fontSize:10, opacity:0.7 }}>({(planning[d]||[]).length})</span>
+                {DIAS_LABEL[d]} <span style={{ fontSize:10, opacity:0.7 }}>({(planningFusionado[d]||[]).length})</span>
               </button>
             ))}
           </div>
         )}
 
         {vista==="dia" && (
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${PROFS.filter(pk=>(planning[diaActivo]||[]).some(p=>p.profesor===pk)).length||1},1fr)`, gap:8 }}>
-            {PROFS.filter(pk=>(planning[diaActivo]||[]).some(p=>p.profesor===pk)).map(pk=>{
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${PROFS.filter(pk=>(planningFusionado[diaActivo]||[]).some(p=>p.profesor===pk)).length||1},1fr)`, gap:8 }}>
+            {PROFS.filter(pk=>(planningFusionado[diaActivo]||[]).some(p=>p.profesor===pk)).map(pk=>{
               const cp=COLOR_PROF[pk];
               return (
                 <div key={pk}>
                   <div style={{ background:cp, color:"white", borderRadius:"10px 10px 0 0", padding:"7px 10px", fontSize:12, fontWeight:700, textAlign:"center" }}>{PROF_LABEL[pk]}</div>
                   <div style={{ background:"white", border:"1px solid "+cp+"33", borderTop:"none", borderRadius:"0 0 10px 10px", padding:"8px" }}>
-                    {(planning[diaActivo]||[]).filter(p=>p.profesor===pk).map((p,i)=><ChipPractica key={i} p={p} onClick={()=>setModalP({p,dia:diaActivo})} />)}
+                    {(planningFusionado[diaActivo]||[]).filter(p=>p.profesor===pk).map((p,i)=><ChipPractica key={i} p={p} onClick={()=>setModalP({p,dia:diaActivo})} />)}
                   </div>
                 </div>
               );
@@ -1570,7 +1567,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
         )}
 
         {vista==="profesor" && PROFS.map(pk=>{
-          const pracs=(planning[diaActivo]||[]).filter(p=>p.profesor===pk);
+          const pracs=(planningFusionado[diaActivo]||[]).filter(p=>p.profesor===pk);
           const cp=COLOR_PROF[pk];
           return (
             <div key={pk} style={{ background:"white", borderRadius:12, border:"1.5px solid "+cp+"33", marginBottom:10, overflow:"hidden" }}>
@@ -1589,14 +1586,14 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           <div style={{ overflowX:"auto" }}>
             <div style={{ display:"grid", gridTemplateColumns:"60px repeat(5,1fr)", gap:4, minWidth:420 }}>
               <div/>
-              {DIAS_SEMANA.map(d=><div key={d} style={{ background:"#1A3A6B", color:"white", borderRadius:6, padding:"5px", fontSize:11, fontWeight:700, textAlign:"center" }}>{DIAS_LABEL[d].slice(0,3)}<div style={{ fontSize:9, opacity:0.7 }}>{(planning[d]||[]).length}</div></div>)}
+              {DIAS_SEMANA.map(d=><div key={d} style={{ background:"#1A3A6B", color:"white", borderRadius:6, padding:"5px", fontSize:11, fontWeight:700, textAlign:"center" }}>{DIAS_LABEL[d].slice(0,3)}<div style={{ fontSize:9, opacity:0.7 }}>{(planningFusionado[d]||[]).length}</div></div>)}
               {PROFS.map(pk=>{
                 const cp=COLOR_PROF[pk];
                 return [
                   <div key={pk+"_l"} style={{ display:"flex", alignItems:"center", justifyContent:"center" }}><div style={{ width:28, height:28, borderRadius:"50%", background:cp, color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700 }}>{PROF_LABEL[pk][0]}</div></div>,
                   ...DIAS_SEMANA.map(d=>(
                     <div key={pk+"_"+d} style={{ background:"white", border:"1px solid "+cp+"22", borderRadius:6, padding:"3px", minHeight:50 }}>
-                      {(planning[d]||[]).filter(p=>p.profesor===pk).map((p,i)=>(
+                      {(planningFusionado[d]||[]).filter(p=>p.profesor===pk).map((p,i)=>(
                         <div key={i} onClick={()=>setModalP({p,dia:d})} style={{ fontSize:9, fontWeight:600, color:cp, padding:"2px 4px", borderRadius:4, background:cp+"11", marginBottom:2, cursor:"pointer", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.desde} {p.alumnoNombre.split(",")[0]}</div>
                       ))}
                     </div>
@@ -1611,7 +1608,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           <div>
             {Object.keys(VEH_LABEL).map(vk => {
               const todasPracs = DIAS_SEMANA.flatMap(d =>
-                (planning[d]||[]).filter(p => p.vehiculo === vk).map(p => ({...p, dia:d}))
+                (planningFusionado[d]||[]).filter(p => p.vehiculo === vk).map(p => ({...p, dia:d}))
               );
               const totalMin = todasPracs.reduce((acc,p) => acc + (p.duracion||0), 0);
               const totalH = Math.floor(totalMin/60);
@@ -1624,7 +1621,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                     <div style={{ color:"#A8C4E8", fontSize:12, fontWeight:600 }}>{totalH}h {totalM>0?totalM+"min":""} · {todasPracs.length} prácticas</div>
                   </div>
                   {DIAS_SEMANA.map(d => {
-                    const pracs = (planning[d]||[]).filter(p => p.vehiculo === vk);
+                    const pracs = (planningFusionado[d]||[]).filter(p => p.vehiculo === vk);
                     if (pracs.length === 0) return null;
                     return (
                       <div key={d} style={{ borderBottom:"1px solid #F0EBE5", padding:"8px 14px" }}>
@@ -1647,7 +1644,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                   {/* Horas totales por día */}
                   <div style={{ padding:"8px 14px", background:"#F7F9FF", display:"flex", gap:6, flexWrap:"wrap" }}>
                     {DIAS_SEMANA.map(d => {
-                      const min = (planning[d]||[]).filter(p=>p.vehiculo===vk).reduce((a,p)=>a+(p.duracion||0),0);
+                      const min = (planningFusionado[d]||[]).filter(p=>p.vehiculo===vk).reduce((a,p)=>a+(p.duracion||0),0);
                       if (!min) return null;
                       return <span key={d} style={{ fontSize:10, fontWeight:600, color:"#1A3A6B", background:"#E0EAF8", padding:"3px 8px", borderRadius:20 }}>{DIAS_LABEL[d].slice(0,3)}: {Math.floor(min/60)}h{min%60>0?min%60+"m":""}</span>;
                     })}
@@ -2305,7 +2302,7 @@ function InformeSemanal({ planning, cfg }) {
               {DIAS_SEMANA.map(d=>(
                 <th key={d} style={{ padding:"6px 8px", background:"#F7F9FF", textAlign:"center", fontSize:10, color:"#1A3A6B", fontWeight:700, borderBottom:"1.5px solid #E8E0D5", borderLeft:"1px solid #F0EBE5" }}>
                   {DIAS_LABEL[d].slice(0,3).toUpperCase()}
-                  <div style={{ fontWeight:500, color:"#9A9A9A" }}>{(planning[d]||[]).length}p</div>
+                  <div style={{ fontWeight:500, color:"#9A9A9A" }}>{(planningFusionado[d]||[]).length}p</div>
                 </th>
               ))}
             </tr>
