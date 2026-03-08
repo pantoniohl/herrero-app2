@@ -535,6 +535,31 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
     planning[dia].sort((a, b) => toMin(a.desde) - toMin(b.desde));
   }
 
+  // ── Fusionar prácticas contiguas del mismo alumno+profesor ──
+  // Si un alumno tiene 2 prácticas seguidas (p1.hasta === p2.desde, mismo profesor),
+  // se unen en una sola entrada con duracion sumada para mostrar en UI e informes
+  for (const dia of diasSemana) {
+    const fusionadas = [];
+    for (const p of planning[dia]) {
+      const ant = fusionadas[fusionadas.length - 1];
+      if (
+        ant &&
+        ant.alumnoId === p.alumnoId &&
+        ant.profesor  === p.profesor  &&
+        ant.permiso   === p.permiso   &&
+        ant.hasta     === p.desde     // contiguas exactas
+      ) {
+        // Fusionar: extender la anterior
+        ant.hasta    = p.hasta;
+        ant.duracion = (ant.duracion || 0) + (p.duracion || 0);
+        ant.fusionada = true;
+      } else {
+        fusionadas.push({ ...p });
+      }
+    }
+    planning[dia] = fusionadas;
+  }
+
   return { planning, sinAsignar };
 }
 
