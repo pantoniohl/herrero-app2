@@ -166,6 +166,42 @@ function restarCAP(tramos, capBloqueo) {
   }
   return resultado;
 }
+// Resta pausa de comida (Mamen/Javi): 1h30 entre 14:00-16:30
+// La pausa se coloca donde hay menos práctica — siempre dentro de 14:00-16:30
+function restarPausaComida(tramos, ocupaciones) {
+  const PAUSA_DESDE = toMin("14:00");
+  const PAUSA_HASTA = toMin("16:30");
+  const PAUSA_DUR   = 90; // 1h30
+  // Si ya hay prácticas entre 14:00-16:30, adaptar la pausa alrededor de ellas
+  const ocupEnVentana = ocupaciones.filter(o => o.hasta > PAUSA_DESDE && o.desde < PAUSA_HASTA);
+  let pausaDesde, pausaHasta;
+  if (ocupEnVentana.length === 0) {
+    // Sin prácticas en ventana: pausa 14:00-15:30
+    pausaDesde = PAUSA_DESDE;
+    pausaHasta = PAUSA_DESDE + PAUSA_DUR;
+  } else {
+    // Hay prácticas: poner pausa después de la última que termina dentro de la ventana
+    const maxHastaOcup = Math.min(Math.max(...ocupEnVentana.map(o => o.hasta)), PAUSA_HASTA - PAUSA_DUR);
+    pausaDesde = maxHastaOcup;
+    pausaHasta = pausaDesde + PAUSA_DUR;
+    if (pausaHasta > PAUSA_HASTA) {
+      // No cabe después: ponerla antes de la primera
+      const minDesdeOcup = Math.max(Math.min(...ocupEnVentana.map(o => o.desde)) - PAUSA_DUR, PAUSA_DESDE);
+      pausaDesde = minDesdeOcup;
+      pausaHasta = pausaDesde + PAUSA_DUR;
+    }
+  }
+  // Restar la pausa de los tramos
+  return tramos.flatMap(t => {
+    if (pausaHasta <= t.desde || pausaDesde >= t.hasta) return [t];
+    const partes = [];
+    if (t.desde < pausaDesde) partes.push({ desde: t.desde, hasta: pausaDesde });
+    if (t.hasta > pausaHasta) partes.push({ desde: pausaHasta, hasta: t.hasta });
+    return partes;
+  });
+}
+
+
 
 // Intersección de dos listas de tramos
 function intersectarTramos(a, b) {
@@ -323,10 +359,18 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
       if (!dispAlumno || dispAlumno.estado === "no") continue;
 
       // Tramos disponibles del alumno ese día
-      const tramosAlumno = dispAlumno.estado === "todo"
+      let tramosAlumno = dispAlumno.estado === "todo"
         ? [{ desde: toMin("09:00"), hasta: toMin(HORA_MAX) }]
         : (dispAlumno.tramos || []).map(t => ({ desde: toMin(t.desde), hasta: toMin(t.hasta) }));
 
+
+      // Bloqueo examen: si hay examen este día, bloquear franja 09:00-14:00
+      if (configSemanal.diaExamen === dia) {
+        const examHasta = toMin("14:00");
+        tramosAlumno = tramosAlumno
+          .map(t => ({ desde: Math.max(t.desde, examHasta), hasta: t.hasta }))
+          .filter(t => t.hasta - t.desde >= 20);
+      }
       if (tramosAlumno.length === 0) continue;
 
       // Límite de pista ese día
@@ -393,6 +437,10 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
           const ocupacionesProf = getOcup(ocupProf, profKey + "_" + dia);
           tramosProf = restarOcupaciones(tramosProf, ocupacionesProf);
 
+          // Pausa comida Mamen/Javi: 1h30 entre 14:00-16:30
+          if (profKey === "mamen" || profKey === "javi") {
+            tramosProf = restarPausaComida(tramosProf, ocupacionesProf);
+          }
           // Intersección alumno ∩ profesor
           let tramosComunes = intersectarTramos(tramosAlumno, tramosProf);
           if (tramosComunes.length === 0) continue;
@@ -1481,26 +1529,27 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
   const totalAsignadas = planning ? Object.values(planning).flat().length : 0;
 
   // ── Fusión de prácticas contiguas (en render, inmune a tree-shaking) ──
+  // Fusión: une prácticas contiguas del mismo alumno en una sola tarjeta
   const planningFusionado = useMemo(() => {
     if (!planning) return null;
+    const toM = t => { const [h,m] = t.split(':'); return parseInt(h)*60+parseInt(m); };
     const out = {};
     for (const dia of Object.keys(planning)) {
-      const pracs = [...(planning[dia]||[])].sort((a,b)=>{
-        const ma = parseInt(a.desde)*60+parseInt(a.desde.split(':')[1]);
-        const mb = parseInt(b.desde)*60+parseInt(b.desde.split(':')[1]);
-        return ma-mb;
-      });
+      const pracs = [...(planning[dia]||[])].sort((a,b)=>toM(a.desde)-toM(b.desde));
       const fus = [];
       for (const p of pracs) {
         const ant = fus[fus.length-1];
         if (ant && ant.alumnoId===p.alumnoId) {
-          const fa=parseInt(ant.hasta)*60+parseInt(ant.hasta.split(':')[1]);
-          const fb=parseInt(p.desde)*60+parseInt(p.desde.split(':')[1]);
-          if (fb-fa<=5 && fb>=fa) { ant.hasta=p.hasta; ant.duracion=(ant.duracion||0)+(p.duracion||0); continue; }
+          const gap = toM(p.desde) - toM(ant.hasta);
+          if (gap >= 0 && gap <= 5) {
+            ant.hasta    = p.hasta;
+            ant.duracion = (ant.duracion||0) + (p.duracion||0);
+            continue;
+          }
         }
         fus.push({...p});
       }
-      out[dia]=fus;
+      out[dia] = fus;
     }
     return out;
   }, [planning]);
@@ -1558,7 +1607,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                 <div key={pk}>
                   <div style={{ background:cp, color:"white", borderRadius:"10px 10px 0 0", padding:"7px 10px", fontSize:12, fontWeight:700, textAlign:"center" }}>{PROF_LABEL[pk]}</div>
                   <div style={{ background:"white", border:"1px solid "+cp+"33", borderTop:"none", borderRadius:"0 0 10px 10px", padding:"8px" }}>
-                    {(planningFusionado[diaActivo]||[]).filter(p=>p.profesor===pk).map((p,i)=><ChipPractica key={i} p={p} onClick={()=>setModalP({p,dia:diaActivo})} />)}
+                    {(planningFusionado[diaActivo]||[]).filter(p=>p.profesor===pk).map((p,i)=><ChipPractica key={i} p={p} onClick={()=>setModalP({p,dia:diaActivo,diaOrig:diaActivo})} />)}
                   </div>
                 </div>
               );
@@ -1594,7 +1643,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                   ...DIAS_SEMANA.map(d=>(
                     <div key={pk+"_"+d} style={{ background:"white", border:"1px solid "+cp+"22", borderRadius:6, padding:"3px", minHeight:50 }}>
                       {(planningFusionado[d]||[]).filter(p=>p.profesor===pk).map((p,i)=>(
-                        <div key={i} onClick={()=>setModalP({p,dia:d})} style={{ fontSize:9, fontWeight:600, color:cp, padding:"2px 4px", borderRadius:4, background:cp+"11", marginBottom:2, cursor:"pointer", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.desde} {p.alumnoNombre.split(",")[0]}</div>
+                        <div key={i} onClick={()=>setModalP({p,dia:d,diaOrig:d})} style={{ fontSize:9, fontWeight:600, color:cp, padding:"2px 4px", borderRadius:4, background:cp+"11", marginBottom:2, cursor:"pointer", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.desde} {p.alumnoNombre.split(",")[0]}</div>
                       ))}
                     </div>
                   ))
@@ -1700,16 +1749,55 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                   ))}
                 </div>
               </div>
+                {/* Cambiar día y hora */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>📅 Mover a otro día</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {["lunes","martes","miercoles","jueves","viernes"].map(d=>(
+                      <button key={d} onClick={()=>setModalP(mp=>({...mp, dia:d}))}
+                        style={{ padding:"7px 12px", borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:600,
+                          border:"1.5px solid "+(modalP.dia===d?"#1A3A6B":"#E8E0D5"),
+                          background:modalP.dia===d?"#1A3A6B":"white",
+                          color:modalP.dia===d?"white":"#7A7A7A" }}>
+                        {({lunes:"Lun",martes:"Mar",miercoles:"Mié",jueves:"Jue",viernes:"Vie"})[d]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", letterSpacing:1, marginBottom:8 }}>🕐 Cambiar hora inicio</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {["09:00","09:30","10:00","10:30","11:00","11:30","12:00","12:30","13:00","14:00","14:30","15:00","15:30","16:00","16:30","17:00","17:30","18:00","18:30","19:00","19:30","20:00","20:30"].map(h=>{
+                      const dur = modalP.p.duracion || 30;
+                      const [hh,mm] = h.split(":").map(Number);
+                      const finMin = hh*60+mm+dur;
+                      const finH = String(Math.floor(finMin/60)).padStart(2,"0")+":"+String(finMin%60).padStart(2,"0");
+                      return (
+                        <button key={h} onClick={()=>setModalP(mp=>({...mp, p:{...mp.p, desde:h, hasta:finH}}))}
+                          style={{ padding:"5px 10px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:11, fontWeight:600,
+                            border:"1.5px solid "+(modalP.p.desde===h?"#1A6B3A":"#E8E0D5"),
+                            background:modalP.p.desde===h?"#1A6B3A":"white",
+                            color:modalP.p.desde===h?"white":"#7A7A7A" }}>
+                          {h}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 <button onClick={()=>{
                   setPlanning(p=>{
                     const n={...p};
-                    n[modalP.dia]=n[modalP.dia].map(x=>x===modalP.p?{...modalP.p, forzado:true}:x);
+                    const orig=modalP.diaOrig||modalP.dia;
+                    n[orig]=(n[orig]||[]).filter(x=>x!==modalP.p);
+                    if(!n[modalP.dia])n[modalP.dia]=[];
+                    const toM=t=>{const[h,m]=t.split(":");return parseInt(h)*60+parseInt(m);};
+                    n[modalP.dia]=[...n[modalP.dia],{...modalP.p,forzado:true}].sort((a,b)=>toM(a.desde)-toM(b.desde));
                     return n;
                   });
                   setModalP(null);
                 }} style={{ padding:12, borderRadius:12, border:"1.5px solid #1A3A6B33", background:"#F0F4FF", color:"#1A3A6B", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>💾 Guardar cambios</button>
-                <button onClick={()=>{setPlanning(p=>{const n={...p};n[modalP.dia]=n[modalP.dia].filter(x=>x!==modalP.p);return n;});setModalP(null);}} style={{ padding:12, borderRadius:12, border:"1.5px solid #C8102E33", background:"#FDF5F5", color:"#C8102E", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>🗑 Eliminar práctica</button>
+                <button onClick={()=>{setPlanning(p=>{const n={...p};const orig=modalP.diaOrig||modalP.dia;n[orig]=(n[orig]||[]).filter(x=>x!==modalP.p);return n;});setModalP(null);}} style={{ padding:12, borderRadius:12, border:"1.5px solid #C8102E33", background:"#FDF5F5", color:"#C8102E", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>🗑 Eliminar práctica</button>
               </div>
             </div>
           </div>
