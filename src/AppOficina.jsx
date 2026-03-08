@@ -335,8 +335,14 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
     return aExamen - bExamen;
   });
 
-  const ordenados = [...ordenarGrupo(pesados), ...ordenarGrupo(moduloB)];
-
+  // Orden alumnos: B primero (alumnos propios Mamen), luego C circ, luego C pista, luego C+E
+  // Así Mamen rellena horas con: B propios → C circ → C pista
+  const ordenados = [
+    ...ordenarGrupo(moduloB),
+    ...ordenarGrupo(pesados.filter(a => a.permiso === 'C' && a.fase !== 'pista')),  // circ primero
+    ...ordenarGrupo(pesados.filter(a => a.permiso === 'C' && a.fase === 'pista')), // pista segundo
+    ...ordenarGrupo(pesados.filter(a => a.permiso === 'C+E')),
+  ];
   for (const alumno of ordenados) {
     const duracion = alumno.permiso === "B" ? DUR_B : DUR_PESADOS;
     const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas || 8) : 2;
@@ -385,28 +391,70 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
       while (asignadasHoy < maxHoy && asignadas < maxSemanal) {
         let asignado = false;
 
-        // Prioridad de profesores según permiso
-        // B: Mamen > Javi > Toni (Pablo nunca da B)
-        // C/C+E: Pablo primero, luego compacidad
-        const PRIORIDAD_B    = ["mamen","javi","toni","pablo"];
-        const PRIORIDAD_PESADOS = ["pablo","mamen","javi","toni"];
+        // ── Prioridad de profesores ──────────────────────────────────────────
+        // Mamen: mínimo calculado según tramos disponibles ese día:
+        //   mañana+tarde disponible = 8h | solo mañana = 5h | solo tarde = 4h
+        //   día con examen = descuenta el bloqueo | no disponible = 0 (sin asignar)
+        // Relleno si no llega con B propios: C circ → C pista (en ese orden)
+
+        const mamenConfigHoy = configSemanal.profesores?.["mamen"]?.[dia]
+          || configSemanal.profesores?.["mamen"]?.dias?.[dia];
+        const mamenDisponibleHoy = mamenConfigHoy && mamenConfigHoy.estado !== "no";
+
+        // Calcular mínimo de Mamen según tramos disponibles hoy
+        let minMamen = 0;
+        if (mamenDisponibleHoy) {
+          const tramosM = tramosDisponibles(mamenConfigHoy);
+          // Descontar bloqueo examen si aplica
+          const tramosMAjust = (!esSemSig && configSemanal.diaExamen === dia)
+            ? tramosM.map(t => ({ desde: Math.max(t.desde, toMin("14:00")), hasta: t.hasta }))
+              .filter(t => t.hasta > t.desde)
+            : tramosM;
+          // Minutos totales disponibles (descontando pausa comida ~90 min)
+          const dispTotal = tramosMAjust.reduce((s,t) => s + (t.hasta - t.desde), 0);
+          minMamen = Math.max(0, dispTotal - 90); // pausa comida de 1h30
+        }
+
+        const horasMamenHoy = getOcup(ocupProf, "mamen_" + dia)
+          .reduce((sum, o) => sum + (o.hasta - o.desde), 0);
+        const mamenNecesitaHoras = mamenDisponibleHoy && horasMamenHoy < minMamen;
+
+        const PRIORIDAD_B       = ["mamen","javi","toni","pablo"];
+        // C: si Mamen necesita horas → Mamen primero; si no → Pablo primero
+        const PRIORIDAD_PESADOS = mamenNecesitaHoras
+          ? ["mamen","pablo","javi","toni"]
+          : ["pablo","mamen","javi","toni"];
 
         const profesoresCandidatos = Object.keys(CAPACIDADES).filter(pk => {
-          if (alumno.permiso === "B" && alumno.profesorFijo && pk !== alumno.profesorFijo) return false;
-          // B: respetar profesor fijo si ya tiene uno asignado
           if (alumno.permiso === "B" && alumno.profesorFijo && pk !== alumno.profesorFijo) return false;
           const caps = CAPACIDADES[pk];
           if (!caps.includes(alumno.permiso)) return false;
           const profConfig = configSemanal.profesores?.[pk]?.[dia] || configSemanal.profesores?.[pk]?.dias?.[dia];
           if (!profConfig || profConfig.estado === "no") return false;
-          // Pablo: máximo 3 días de prácticas normales
           if (pk === "pablo") {
-            const diasPablo = diasSemana.filter(d =>
-              getOcup(ocupProf, pk + "_" + d).length > 0
-            ).length;
+            const diasPablo = diasSemana.filter(d => getOcup(ocupProf, pk + "_" + d).length > 0).length;
             if (diasPablo >= 3 && getOcup(ocupProf, pk + "_" + dia).length === 0) return false;
           }
           return true;
+        });
+
+        profesoresCandidatos.sort((a, b) => {
+          if (mamenNecesitaHoras) {
+            if (a === "mamen" && b !== "mamen") return -1;
+            if (b === "mamen" && a !== "mamen") return 1;
+          }
+          if (alumno.permiso === "B") {
+            const pa = PRIORIDAD_B.indexOf(a);
+            const pb = PRIORIDAD_B.indexOf(b);
+            if (pa !== pb) return pa - pb;
+          } else {
+            const pa = PRIORIDAD_PESADOS.indexOf(a);
+            const pb = PRIORIDAD_PESADOS.indexOf(b);
+            if (pa !== pb) return pa - pb;
+          }
+          const ocA = getOcup(ocupProf, a + "_" + dia).length;
+          const ocB = getOcup(ocupProf, b + "_" + dia).length;
+          return ocB - ocA;
         });
 
         // Ordenar profesores según criterio
@@ -1951,7 +1999,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
 
     setSimulando(true);
     const DIAS = ['lunes','martes','miercoles','jueves','viernes'];
-    const FRANJAS = ['manana','tarde','noche'];
+    const FRANJAS = ['manana','tarde']; // Nunca 'noche': no se dan clases en esa franja
 
     // Peso: 70% disponible la mayoría de días, 30% días sueltos
     const genDias = () => {
