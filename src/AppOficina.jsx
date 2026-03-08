@@ -1743,14 +1743,6 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
 // ══════════════════════════════════════════════
 // APP SHELL — OFICINA
 // ══════════════════════════════════════════════
-const NAV = [
-  { key:"config",      label:"Config",    icon:"⚙️" },
-  { key:"alumnos",     label:"Alumnos",   icon:"👥" },
-  { key:"respuestas",  label:"Respuestas",icon:"📬" },
-  { key:"planning",    label:"Planning",  icon:"📅" },
-  { key:"informes",    label:"Informes",  icon:"📋" },
-  { key:"whatsapp",    label:"WhatsApp",  icon:"💬" },
-];
 
 function InformePlanningProfesor({ profKey, planning, cfg }) {
   const cp = COLOR_PROF[profKey] || "#1A3A6B";
