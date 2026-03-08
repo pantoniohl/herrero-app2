@@ -2188,8 +2188,8 @@ function InformePlanningAlumno({ alumno, planning, cfg }) {
               <div style={{ fontSize:11, fontWeight:700, color:"#1A3A6B", textTransform:"uppercase", letterSpacing:"0.7px", borderBottom:"1.5px solid #E8E0D5", paddingBottom:4, marginBottom:6 }}>{DIAS_LABEL[dia]}</div>
               {pracs.map((p,i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", background:"#F7F3EE", borderRadius:8, borderLeft:"3px solid #1A3A6B", marginBottom:4 }}>
-                  <div style={{ fontWeight:800, fontSize:15, color:"#1A1A1A" }}>{p.desde}</div>
-                  <div style={{ fontSize:12, color:"#777" }}>{p.desde} · {durLabel(p.duracion)} · {p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"}</div>
+                  <div style={{ fontWeight:700, fontSize:13, color:"#1A1A1A" }}>{p.desde} <span style={{fontWeight:500,color:"#888",fontSize:11}}>· {durLabel(p.duracion)}</span> <span style={{fontSize:11,color:"#555"}}>{p.tipo==="pista"?"🏁 Pista":"🛣️ Circulación"}</span></div>
+                  {/* hora unificada arriba */}
                 </div>
               ))}
             </div>
@@ -2238,7 +2238,7 @@ function InformeSemanal({ planning, cfg }) {
                       <td key={d} style={{ padding:"4px 6px", verticalAlign:"top", borderLeft:"1px solid #F0EBE5", borderBottom:"1px solid #F7F3EE", minWidth:80 }}>
                         {pracs.map((p,i)=>(
                           <div key={i} style={{ background:cp+"11", borderRadius:5, padding:"3px 5px", marginBottom:2, borderLeft:"2px solid "+cp }}>
-                            <div style={{ fontWeight:700, fontSize:10, color:cp }}>{p.desde}</div>
+                  <div style={{ fontWeight:700, fontSize:10, color:cp }}>{p.desde} <span style={{fontWeight:400,color:"#888"}}>· {durLabel(p.duracion)}</span></div>
                             <div style={{ fontSize:10, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", maxWidth:80 }}>{p.alumnoNombre.split(",")[0]}</div>
                             <div style={{ fontSize:9, color:"#888" }}>{VEH_LABEL[p.vehiculo]?.split("(")[0]||""}</div>
                           </div>
