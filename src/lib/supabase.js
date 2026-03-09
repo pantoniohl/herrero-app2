@@ -205,10 +205,10 @@ export async function getDisponibilidades(configId) {
 
 // ── PLANNING ──────────────────────────────────────────────────
 
-export async function guardarPlanning(configId, { practicas, sinAsignar }) {
+export async function guardarPlanning(configId, { practicas, sinAsignar, huella }) {
   const { data, error } = await supabase
     .from('planning')
-    .upsert({ config_id: configId, practicas, sin_asignar: sinAsignar }, { onConflict: 'config_id' })
+    .upsert({ config_id: configId, practicas, sin_asignar: sinAsignar, huella: huella || null }, { onConflict: 'config_id' })
     .select().single();
   if (error) throw error;
   return data;
