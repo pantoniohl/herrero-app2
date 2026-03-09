@@ -303,9 +303,106 @@ function pistaBloqueada(ocupacionesPista, desde, hasta) {
     - planning: { [dia]: [ { alumnoId, profesor, vehiculo, tipo, desde, hasta, duracion } ] }
     - sinAsignar: [ { alumnoId, motivo } ]
 */
+
+// ─── MOTOR TRANSPORTE ────────────────────────────────────
+const LOCALIDAD_KEY_MAP = {
+  "Trujillo":"trujillo","La Cumbre":"la_cumbre","Ibahernando":"ibahernando",
+  "Torrecillas de la Tiesa":"torrecillas","Aldeacentenera":"aldeacentenera",
+  "Garcíaz":"garciaz","Garciaz":"garciaz","Madroñera":"madronera",
+  "Zarza de Montánchez":"zarza","Herguijuela":"herguijuela",
+  "Santa Cruz de la Sierra":"santa_cruz","Puerto de Santa Cruz":"puerto_santa_cruz",
+  "Plasenzuela":"plasenzuela","Conquista de la Sierra":"conquista",
+  "Santa Ana":"santa_ana","Ruanes":"ruanes",
+};
+const TIEMPOS_T = {
+  "trujillo":{"trujillo":0,"la_cumbre":15,"ibahernando":22,"torrecillas":28,"aldeacentenera":38,"garciaz":25,"madronera":18,"zarza":40,"herguijuela":25,"santa_cruz":22,"puerto_santa_cruz":24,"plasenzuela":30,"conquista":28,"santa_ana":30,"ruanes":27},
+  "la_cumbre":{"trujillo":15,"la_cumbre":0,"ibahernando":18,"torrecillas":38,"aldeacentenera":40,"garciaz":30,"madronera":20,"zarza":38,"herguijuela":28,"santa_cruz":25,"puerto_santa_cruz":28,"plasenzuela":30,"conquista":32,"santa_ana":28,"ruanes":22},
+  "ibahernando":{"trujillo":22,"la_cumbre":18,"ibahernando":0,"torrecillas":35,"aldeacentenera":35,"garciaz":25,"madronera":22,"zarza":22,"herguijuela":20,"santa_cruz":10,"puerto_santa_cruz":12,"plasenzuela":20,"conquista":25,"santa_ana":25,"ruanes":18},
+  "torrecillas":{"trujillo":28,"la_cumbre":38,"ibahernando":35,"torrecillas":0,"aldeacentenera":12,"garciaz":22,"madronera":25,"zarza":35,"herguijuela":30,"santa_cruz":35,"puerto_santa_cruz":38,"plasenzuela":22,"conquista":32,"santa_ana":25,"ruanes":28},
+  "aldeacentenera":{"trujillo":38,"la_cumbre":40,"ibahernando":35,"torrecillas":12,"aldeacentenera":0,"garciaz":20,"madronera":18,"zarza":35,"herguijuela":25,"santa_cruz":35,"puerto_santa_cruz":35,"plasenzuela":25,"conquista":28,"santa_ana":28,"ruanes":30},
+  "garciaz":{"trujillo":25,"la_cumbre":30,"ibahernando":25,"torrecillas":22,"aldeacentenera":20,"garciaz":0,"madronera":18,"zarza":30,"herguijuela":15,"santa_cruz":22,"puerto_santa_cruz":22,"plasenzuela":28,"conquista":12,"santa_ana":28,"ruanes":25},
+  "madronera":{"trujillo":18,"la_cumbre":20,"ibahernando":22,"torrecillas":25,"aldeacentenera":18,"garciaz":18,"madronera":0,"zarza":35,"herguijuela":12,"santa_cruz":15,"puerto_santa_cruz":28,"plasenzuela":28,"conquista":20,"santa_ana":28,"ruanes":25},
+  "zarza":{"trujillo":40,"la_cumbre":38,"ibahernando":22,"torrecillas":35,"aldeacentenera":35,"garciaz":30,"madronera":35,"zarza":0,"herguijuela":28,"santa_cruz":22,"puerto_santa_cruz":18,"plasenzuela":22,"conquista":28,"santa_ana":22,"ruanes":15},
+  "herguijuela":{"trujillo":25,"la_cumbre":28,"ibahernando":20,"torrecillas":30,"aldeacentenera":25,"garciaz":15,"madronera":12,"zarza":28,"herguijuela":0,"santa_cruz":12,"puerto_santa_cruz":18,"plasenzuela":28,"conquista":12,"santa_ana":28,"ruanes":22},
+  "santa_cruz":{"trujillo":22,"la_cumbre":25,"ibahernando":10,"torrecillas":35,"aldeacentenera":35,"garciaz":22,"madronera":15,"zarza":22,"herguijuela":12,"santa_cruz":0,"puerto_santa_cruz":10,"plasenzuela":22,"conquista":18,"santa_ana":22,"ruanes":18},
+  "puerto_santa_cruz":{"trujillo":24,"la_cumbre":28,"ibahernando":12,"torrecillas":38,"aldeacentenera":35,"garciaz":22,"madronera":28,"zarza":18,"herguijuela":18,"santa_cruz":10,"puerto_santa_cruz":0,"plasenzuela":20,"conquista":20,"santa_ana":22,"ruanes":18},
+  "plasenzuela":{"trujillo":30,"la_cumbre":30,"ibahernando":20,"torrecillas":22,"aldeacentenera":25,"garciaz":28,"madronera":28,"zarza":22,"herguijuela":28,"santa_cruz":22,"puerto_santa_cruz":20,"plasenzuela":0,"conquista":28,"santa_ana":10,"ruanes":12},
+  "conquista":{"trujillo":28,"la_cumbre":32,"ibahernando":25,"torrecillas":32,"aldeacentenera":28,"garciaz":12,"madronera":20,"zarza":28,"herguijuela":12,"santa_cruz":18,"puerto_santa_cruz":20,"plasenzuela":28,"conquista":0,"santa_ana":28,"ruanes":22},
+  "santa_ana":{"trujillo":30,"la_cumbre":28,"ibahernando":25,"torrecillas":25,"aldeacentenera":28,"garciaz":28,"madronera":28,"zarza":22,"herguijuela":28,"santa_cruz":22,"puerto_santa_cruz":22,"plasenzuela":10,"conquista":28,"santa_ana":0,"ruanes":15},
+  "ruanes":{"trujillo":27,"la_cumbre":22,"ibahernando":18,"torrecillas":28,"aldeacentenera":30,"garciaz":25,"madronera":25,"zarza":15,"herguijuela":22,"santa_cruz":18,"puerto_santa_cruz":18,"plasenzuela":12,"conquista":22,"santa_ana":15,"ruanes":0},
+};
+function _permuts(arr){if(arr.length<=1)return[arr];return arr.flatMap((v,i)=>_permuts([...arr.slice(0,i),...arr.slice(i+1)]).map(p=>[v,...p]));}
+function _durRuta(paradas){let t=TIEMPOS_T["trujillo"][paradas[0]]||999;for(let i=0;i<paradas.length-1;i++)t+=(TIEMPOS_T[paradas[i]]?.[paradas[i+1]])||999;t+=(TIEMPOS_T[paradas[paradas.length-1]]?.["trujillo"])||999;return t;}
+function _rutaOpt(paradas){let mejor=null,menorT=Infinity;_permuts(paradas).forEach(p=>{const t=_durRuta(p);if(t<menorT){menorT=t;mejor=p;}});return{orden:mejor,duracion:menorT};}
+function calcularRutasDia(alumnosDia){
+  // alumnosDia: [{alumnoId, localidad, horaPracticaMin (minutos desde 00:00)}]
+  const conT = alumnosDia.map(a=>({...a,lk:LOCALIDAD_KEY_MAP[a.localidad]||null})).filter(a=>a.lk&&a.lk!=="trujillo");
+  if(!conT.length)return{rutasViaje:[],llegadas:{}};
+  const ordenados=[...conT].sort((a,b)=>a.horaPracticaMin-b.horaPracticaMin);
+  const asignados=new Set();
+  const rutasViaje=[];
+  const llegadas={}; // alumnoId -> min llegada Trujillo
+  const HORA_MIN_SALIDA=7*60,MAX_RUTA=60,MAX_ALUM=4;
+  for(let i=0;i<ordenados.length;i++){
+    if(asignados.has(i))continue;
+    const grupo=[i];
+    for(let j=i+1;j<ordenados.length;j++){
+      if(asignados.has(j))continue;
+      if(grupo.length>=MAX_ALUM)break;
+      const gt=[...grupo,j];
+      const paradas=gt.map(x=>ordenados[x].lk);
+      const{duracion}=_rutaOpt(paradas);
+      const llegNec=Math.min(...gt.map(x=>ordenados[x].horaPracticaMin));
+      const salida=llegNec-duracion;
+      if(duracion<=MAX_RUTA&&salida>=HORA_MIN_SALIDA)grupo.push(j);
+    }
+    const paradas=grupo.map(x=>ordenados[x].lk);
+    const{orden:ord,duracion}=_rutaOpt(paradas);
+    const llegNec=Math.min(...grupo.map(x=>ordenados[x].horaPracticaMin));
+    const salidaMin=llegNec-duracion;
+    let t=salidaMin;
+    t+=TIEMPOS_T["trujillo"][ord[0]];
+    const horasRec={[ord[0]]:t};
+    for(let k=1;k<ord.length;k++){t+=TIEMPOS_T[ord[k-1]][ord[k]];horasRec[ord[k]]=t;}
+    t+=TIEMPOS_T[ord[ord.length-1]]["trujillo"];
+    const llegadaTrujillo=t;
+    const vAlumnos=ord.flatMap(lk=>grupo.map(x=>ordenados[x]).filter(a=>a.lk===lk).map(a=>({...a,horaRecogida:horasRec[lk]})));
+    vAlumnos.forEach(a=>{llegadas[a.alumnoId]=llegadaTrujillo;});
+    rutasViaje.push({alumnos:vAlumnos,salidaMin,llegadaTrujillo,duracion,inviable:salidaMin<HORA_MIN_SALIDA});
+    grupo.forEach(x=>asignados.add(x));
+  }
+  return{rutasViaje,llegadas};
+}
+// ─────────────────────────────────────────────────────────
+
 export function generarPlanning(configSemanal, alumnos, diasSemana) {
   const planning = Object.fromEntries(diasSemana.map(d => [d, []]));
   const sinAsignar = [];
+
+  // ─── Calcular rutas de transporte por día ────────────────
+  // horaLlegadaTransporte[dia][alumnoId] = minutos desde 00:00 en que el alumno llega a Trujillo
+  const rutasTransportePorDia = {};
+  const horaLlegadaTransporte = {}; // { [dia]: { [alumnoId]: min } }
+  for (const dia of diasSemana) {
+    const alumnosDia = alumnos
+      .filter(a => a.transporte && a.localidad && a.localidad !== "Trujillo")
+      .map(a => {
+        // Hora de práctica candidata: 09:00 por defecto (se ajustará después)
+        // Usamos el inicio más temprano de sus tramos ese día
+        const disp = a.disponibilidad?.[dia];
+        if (!disp || disp.estado === "no") return null;
+        let inicioMin = toMin("09:00");
+        if (disp.estado === "tramos" && disp.tramos?.length > 0) {
+          inicioMin = Math.min(...disp.tramos.map(t => toMin(t.desde)));
+        }
+        return { alumnoId: a.id, localidad: a.localidad, horaPracticaMin: inicioMin };
+      })
+      .filter(Boolean);
+    const { rutasViaje, llegadas } = calcularRutasDia(alumnosDia);
+    rutasTransportePorDia[dia] = rutasViaje;
+    horaLlegadaTransporte[dia] = llegadas;
+  }
+  // ─────────────────────────────────────────────────────────
 
   // Ocupaciones por recurso y día: { [profKey_dia]: [{desde,hasta}], [vehKey_dia]: [...] }
   const ocupProf = {};
@@ -376,6 +473,17 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
           .filter(t => t.hasta - t.desde >= 20);
       }
       if (tramosAlumno.length === 0) continue;
+
+      // Bloqueo transporte: si el alumno viene de pueblo, no puede empezar antes de su llegada
+      if (alumno.transporte && alumno.localidad && alumno.localidad !== "Trujillo") {
+        const llegMin = horaLlegadaTransporte[dia]?.[alumno.id];
+        if (llegMin != null) {
+          tramosAlumno = tramosAlumno
+            .map(t => ({ desde: Math.max(t.desde, llegMin), hasta: t.hasta }))
+            .filter(t => t.hasta - t.desde >= 20);
+          if (tramosAlumno.length === 0) continue;
+        }
+      }
 
       // Límite de pista ese día
       const limitePista = toMin(configSemanal.horasPista?.[dia] || HORA_MAX);
@@ -717,7 +825,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
     planning[dia].sort((a, b) => toMin(a.desde) - toMin(b.desde));
   }
 
-  return { planning, sinAsignar };
+  return { planning, sinAsignar, rutasTransporte: rutasTransportePorDia };
 }
 
 // ─── Ampliar práctica a 60 min (acción de oficina) ───────────
@@ -1662,7 +1770,7 @@ function ChipPractica({ p, onClick }) {
   );
 }
 
-function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsignar, setSinAsignar }) {
+function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsignar, setSinAsignar, rutasTransporte, setRutasTransporte }) {
   // durLabel definida dentro del componente para evitar tree-shaking
   const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const [diaActivo, setDiaActivo] = useState("lunes");
@@ -1703,6 +1811,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
       setPlanning(res.planning);
       setSinAsignar(res.sinAsignar);
+      setRutasTransporte(res.rutasTransporte || {});
     } catch(e) {
       console.error("Error generando planning:", e);
       alert("Error al generar planning: " + (e.message || e));
@@ -1738,6 +1847,32 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           ))}
         </div>
 
+        {/* Rutas de transporte */}
+        {rutasTransporte && Object.entries(rutasTransporte).some(([,rutas])=>rutas.length>0) && (
+          <div style={{ background:"#FFF8E1", border:"1.5px solid #FFE082", borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#E65100", marginBottom:8 }}>🚐 Rutas de transporte</div>
+            {Object.entries(rutasTransporte).map(([dia, rutas]) =>
+              rutas.length === 0 ? null : (
+                <div key={dia} style={{ marginBottom:8 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#5A5A5A", textTransform:"uppercase", marginBottom:4 }}>{DIAS_LABEL[dia]||dia}</div>
+                  {rutas.map((v,vi) => (
+                    <div key={vi} style={{ background:v.inviable?"#FDF5F5":"white", border:"1px solid "+(v.inviable?"#F5C4C4":"#E8E0D5"), borderRadius:8, padding:"6px 10px", marginBottom:4 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:v.inviable?"#C8102E":"#1A3A6B" }}>
+                        {v.inviable?"⚠️ INVIABLE — ":""}
+                        🕐 Salida {(t=>String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"))(v.salidaMin)} → Llegada Trujillo {(t=>String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"))(v.llegadaTrujillo)} ({v.duracion}min)
+                      </div>
+                      {v.alumnos.map((a,ai) => (
+                        <div key={ai} style={{ fontSize:11, color:"#5A5A5A", marginTop:2 }}>
+                          📍 {(t=>String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0"))(a.horaRecogida)} — {a.nombre||""} {a.apellidos||""} ({a.localidad})
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
         {sinAsignar.length>0 && (
           <div style={{ background:"#FDF5F5", border:"1.5px solid #F5C4C4", borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
             <div style={{ fontSize:12, fontWeight:700, color:"#C8102E", marginBottom:6 }}>⚠️ Sin asignar</div>
@@ -3024,8 +3159,8 @@ export default function AppOficina() {
   const [configId, setConfigId] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
   const [tokens, setTokens] = useState([]);
-  const [planning, setPlanning] = useState(null);
-  const [sinAsignar, setSinAsignar] = useState([]);
+    const [planning, setPlanning] = useState(null);
+  const [rutasTransporte, setRutasTransporte] = useState({}); const [sinAsignar, setSinAsignar] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -3114,7 +3249,7 @@ export default function AppOficina() {
         {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} onNuevaSemana={handleNuevaSemana} />}
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
         {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} cfg={cfg} />}
-        {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} />}
+        {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} rutasTransporte={rutasTransporte} setRutasTransporte={setRutasTransporte} />}
         {pantalla==="informes"    && <ModuloInformes planning={planning} alumnos={alumnos} cfg={cfg} tokens={tokens} configId={configId} />}
         {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
       </div>
