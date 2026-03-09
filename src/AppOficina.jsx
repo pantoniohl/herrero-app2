@@ -375,6 +375,36 @@ function calcularRutasDia(alumnosDia){
 }
 // ─────────────────────────────────────────────────────────
 
+// ── Versión del motor — cambiar al modificar la lógica de planificación ──
+const MOTOR_VERSION = "v88b";
+
+// ── Calcula huella de validez del planning ──────────────────────────────────
+// Cambia si: cambia la versión del motor, los alumnos activos, o las disponibilidades
+function calcularHuella(motorVersion, alumnos, disponibilidades) {
+  const alumnosActivos = alumnos.filter(a => a.activo).map(a => a.id).sort().join(',');
+  // Hash simple: ids de disponibilidades + practicas_deseadas (captura cambios en horarios y prácticas)
+  const dispHash = disponibilidades
+    .map(d => d.alumno_id + ':' + (d.practicas_deseadas || 0) + ':' + JSON.stringify(d.dias))
+    .sort().join('|');
+  return {
+    motorVersion,
+    numAlumnosActivos: alumnos.filter(a => a.activo).length,
+    numDisponibilidades: disponibilidades.length,
+    alumnosIds: alumnosActivos,
+    dispHash,
+  };
+}
+
+// ── Compara dos huellas (ignora generadoEn) ──────────────────────────────────
+function huellaValida(guardada, actual) {
+  if (!guardada || !actual) return false;
+  return guardada.motorVersion    === actual.motorVersion
+    && guardada.numAlumnosActivos === actual.numAlumnosActivos
+    && guardada.numDisponibilidades === actual.numDisponibilidades
+    && guardada.alumnosIds        === actual.alumnosIds
+    && guardada.dispHash          === actual.dispHash;
+}
+
 export function generarPlanning(configSemanal, alumnos, diasSemana) {
   const planning = Object.fromEntries(diasSemana.map(d => [d, []]));
   const sinAsignar = [];
@@ -1838,10 +1868,17 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       setPlanning(res.planning);
       setSinAsignar(res.sinAsignar);
       setRutasTransporte(res.rutasTransporte || {});
+      setPlanningObsoleto(false); // planning recién generado, no obsoleto
       // Guardar en Supabase para persistir entre sesiones
       if (configId) {
         try {
-          await guardarPlanning(configId, { practicas: res.planning, sinAsignar: res.sinAsignar });
+          // Calcular huella de validez para detectar obsolescencia al restaurar
+          const huellaActual = calcularHuella(MOTOR_VERSION, alumnos, disponibilidades);
+          await guardarPlanning(configId, {
+            practicas: res.planning,
+            sinAsignar: res.sinAsignar,
+            huella: { ...huellaActual, generadoEn: new Date().toISOString() },
+          });
         } catch(eSave) { console.warn("No se pudo guardar planning:", eSave); }
       }
     } catch(e) {
@@ -1912,6 +1949,31 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           </div>
         )}
 
+        {/* Aviso planning obsoleto */}
+        {planningObsoleto && (
+          <div style={{
+            margin:"0 0 12px 0", padding:"14px 18px",
+            background:"#FFF3E0", border:"2px solid #E65100",
+            borderRadius:10, display:"flex", alignItems:"flex-start", gap:12
+          }}>
+            <span style={{ fontSize:22, lineHeight:1 }}>⚠️</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, color:"#BF360C", fontSize:14, marginBottom:4 }}>
+                Planning guardado obsoleto
+              </div>
+              <div style={{ color:"#E65100", fontSize:12, lineHeight:1.6 }}>
+                La disponibilidad de los alumnos o la configuración han cambiado desde que se generó
+                este planning. Los datos guardados ya <b>no son válidos</b>. Pulsa
+                <b> "Generar planning"</b> para crear uno nuevo con los datos actuales.
+              </div>
+            </div>
+            <button
+              onClick={() => setPlanningObsoleto(false)}
+              style={{ background:"none", border:"none", cursor:"pointer", fontSize:16, color:"#E65100", padding:0 }}
+              title="Cerrar aviso"
+            >✕</button>
+          </div>
+        )}
         {/* Botones de PDF */}
         <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
           <button onClick={()=>generarPDFGeneral(planning, alumnos, cfg)} style={{ flex:"1 1 auto", padding:"9px 12px", borderRadius:10, border:"1.5px solid #1A3A6B", background:"white", color:"#1A3A6B", fontFamily:"inherit", fontSize:12, fontWeight:700, cursor:"pointer" }}>📄 PDF General</button>
@@ -3201,6 +3263,7 @@ export default function AppOficina() {
   const [respuestasKey, setRespuestasKey] = useState(0); // incrementar para forzar recarga en WhatsApp
   const [sinAsignar, setSinAsignar] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [planningObsoleto, setPlanningObsoleto] = useState(false);
 
   useEffect(() => {
     const cargar = async () => {
@@ -3239,12 +3302,28 @@ export default function AppOficina() {
             .select("*, alumnos(nombre, apellidos, telefono)")
             .eq("config_id", configData.id);
           if (toks) setTokens(toks);
-          // Restaurar planning guardado si existe
+          // Restaurar planning guardado si existe — verificando huella de validez
           try {
             const pData = await getPlanning(configData.id);
             if (pData?.practicas) {
-              setPlanning(pData.practicas);
-              setSinAsignar(pData.sin_asignar || []);
+              // Cargar disponibilidades para calcular huella actual
+              const { data: dispParaHuella } = await supabase
+                .from("disponibilidad")
+                .select("alumno_id, practicas_deseadas, dias")
+                .eq("config_id", configData.id);
+              const alumnosParaHuella = alumnosData || [];
+              const huellaActual = calcularHuella(MOTOR_VERSION, alumnosParaHuella, dispParaHuella || []);
+              if (huellaValida(pData.huella, huellaActual)) {
+                // Huella OK → restaurar planning
+                setPlanning(pData.practicas);
+                setSinAsignar(pData.sin_asignar || []);
+              } else {
+                // Huella inválida → planning obsoleto, mostrar aviso
+                setPlanningObsoleto(true);
+                console.warn("Planning guardado obsoleto — huella no coincide.", {
+                  guardada: pData.huella, actual: huellaActual
+                });
+              }
             }
           } catch(ePlan) { console.warn("No se pudo cargar planning:", ePlan); }
         }
