@@ -1798,7 +1798,12 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
         if (diasDisp && Object.keys(diasDisp).length > 0) {
           // Convertir franjas de Supabase al formato del motor
           disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => {
-            const franjas = diasDisp[d] || [];
+            const val = diasDisp[d];
+            // Rangos exactos guardados desde modo personalizado
+            if (val && typeof val === "object" && !Array.isArray(val) && val._rangos) {
+              return [d, { estado: "tramos", tramos: val._rangos }];
+            }
+            const franjas = Array.isArray(val) ? val : [];
             if (franjas.length === 0) return [d, { estado: "no" }];
             if (franjas.includes("manana") && franjas.includes("mediodia") && franjas.includes("tarde")) return [d, { estado: "todo" }];
             return [d, { estado: "tramos", tramos: franjaATramos(franjas) }];
@@ -2486,7 +2491,8 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
           {disponibilidades.map(d => {
             const a = d.alumnos || alumnos.find(al => al.id === d.alumno_id) || {};
             const franjas = d.dias || {};
-            const diasConFranjas = Object.entries(franjas).filter(([,fs]) => fs && fs.length > 0);
+            const diasConFranjas = Object.entries(franjas).filter(([,fs]) => 
+              fs && (Array.isArray(fs) ? fs.length > 0 : (fs._rangos && fs._rangos.length > 0)));
             return (
               <div key={d.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #C8E6C9", marginBottom:10, overflow:"hidden" }}>
                 <div style={{ background:"#F1F8E9", borderBottom:"1px solid #C8E6C9", padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
@@ -2516,13 +2522,20 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                     <div style={{ fontSize:12, color:"#9A9A9A", fontStyle:"italic" }}>Sin franjas específicas indicadas</div>
                   ) : (
                     <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {diasConFranjas.map(([dia, franjasList]) => (
-                        (franjasList||[]).map(franja => (
-                          <span key={dia+franja} style={{ background:"#E8F5E9", color:"#2E7D32", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
-                            {DIAS_L[dia]||dia} {FRANJAS_L[franja]||franja}
-                          </span>
-                        ))
-                      ))}
+                      {diasConFranjas.map(([dia, franjasList]) => {
+                         if (franjasList && !Array.isArray(franjasList) && franjasList._rangos) {
+                           return franjasList._rangos.map((r,ri) => (
+                             <span key={dia+'r'+ri} style={{ background:"#E3F2FD", color:"#1565C0", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
+                               {DIAS_L[dia]||dia} ⏱ {r.desde}–{r.hasta}
+                             </span>
+                           ));
+                         }
+                         return (franjasList||[]).map(franja => (
+                           <span key={dia+franja} style={{ background:"#E8F5E9", color:"#2E7D32", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
+                             {DIAS_L[dia]||dia} {FRANJAS_L[franja]||franja}
+                           </span>
+                         ));
+                       })}
                     </div>
                   )}
                   {d.practicas_deseadas > 0 && (
