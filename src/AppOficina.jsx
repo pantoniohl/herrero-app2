@@ -2129,8 +2129,9 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
   const [simulando, setSimulando] = useState(false);
-  const [modalEdicion, setModalEdicion] = useState(null); // { alumnoId, dispId, nombre, diasActuales }
-  const [diasModal, setDiasModal] = useState({}); // { lunes: ["manana","tarde"], ... }
+  const [modalEdicion, setModalEdicion] = useState(null);
+  const [diasModal, setDiasModal] = useState({});
+  const [practicasModal, setPracticasModal] = useState(2);
   const [guardandoModal, setGuardandoModal] = useState(false);
 
   const simularRespuestas = async () => {
@@ -2195,8 +2196,9 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   const FRANJAS_LM = { manana:"Mañana", mediodia:"Mediodía", tarde:"Tarde" };
   const DIAS_LM = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes" };
 
-  const abrirModal = (alumnoId, dispId, nombre, diasActuales) => {
+  const abrirModal = (alumnoId, dispId, nombre, diasActuales, pracDeseadas) => {
     setDiasModal(diasActuales ? JSON.parse(JSON.stringify(diasActuales)) : {});
+    setPracticasModal(pracDeseadas || 2);
     setModalEdicion({ alumnoId, dispId, nombre });
   };
 
@@ -2217,14 +2219,14 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       );
       if (modalEdicion.dispId) {
         // Editar existente
-        await supabase.from("disponibilidad").update({ dias: diasFiltrados }).eq("id", modalEdicion.dispId);
+        await supabase.from("disponibilidad").update({ dias: diasFiltrados, practicas_deseadas: practicasModal }).eq("id", modalEdicion.dispId);
       } else {
         // Crear nueva (introducción manual)
         await supabase.from("disponibilidad").insert({
           alumno_id: modalEdicion.alumnoId,
           config_id: configId,
           dias: diasFiltrados,
-          practicas_deseadas: 2,
+          practicas_deseadas: practicasModal,
           manual: true,
         });
       }
@@ -2349,7 +2351,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                       {d.created_at ? new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}) : ""}
                       {d.manual && <span style={{ marginLeft:4, fontSize:10, background:"#FFF3E0", color:"#E65100", borderRadius:8, padding:"1px 5px" }}>manual</span>}
                     </div>
-                    <button onClick={()=>abrirModal(d.alumno_id, d.id, (a.apellidos||"–")+", "+(a.nombre||"–"), d.dias)}
+                    <button onClick={()=>abrirModal(d.alumno_id, d.id, (a.apellidos||"–")+", "+(a.nombre||"–"), d.dias, d.practicas_deseadas)}
                       style={{ padding:"4px 10px", background:"#1A3A6B", color:"white", border:"none", borderRadius:14, cursor:"pointer", fontSize:11, fontWeight:600 }}>
                       ✏️ Editar
                     </button>
@@ -2372,6 +2374,11 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                           </span>
                         ))
                       ))}
+                    </div>
+                  )}
+                  {d.practicas_deseadas > 0 && (
+                    <div style={{ marginTop:8, fontSize:12, fontWeight:700, color:"#1565C0" }}>
+                      🎯 {d.practicas_deseadas} práctica{d.practicas_deseadas > 1 ? "s" : ""} solicitada{d.practicas_deseadas > 1 ? "s" : ""}
                     </div>
                   )}
                   {d.notas && (
@@ -2418,6 +2425,21 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                 </div>
               </div>
             ))}
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"#1A3A6B", marginBottom:8 }}>Prácticas deseadas esta semana</div>
+              <div style={{ display:"flex", gap:6 }}>
+                {[1,2,3,4,5,6,7,8].map(n => (
+                  <button key={n} onClick={()=>setPracticasModal(n)}
+                    style={{ flex:1, padding:"7px 0", borderRadius:8,
+                      border:"1.5px solid "+(practicasModal===n?"#1A3A6B":"#DDD"),
+                      background:practicasModal===n?"#1A3A6B":"#F7F7F7",
+                      color:practicasModal===n?"white":"#555",
+                      fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={{ display:"flex", gap:8, marginTop:16 }}>
               <button onClick={()=>setModalEdicion(null)}
                 style={{ flex:1, padding:10, borderRadius:10, border:"1px solid #DDD", background:"#F5F5F5", cursor:"pointer", fontSize:13 }}>
