@@ -42,10 +42,24 @@ const DIAS_SEMANA = ["lunes","martes","miercoles","jueves","viernes"];
 const DIAS_LABEL  = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes" };
 const DIAS_CORTO  = { lunes:"LUN", martes:"MAR", miercoles:"MIÉ", jueves:"JUE", viernes:"VIE" };
 const FRANJAS = [
-  { key:"manana",   label:"Mañana",   hora:"09:00–14:00", icon:"🌅" },
-  { key:"mediodia", label:"Mediodía", hora:"14:00–17:00", icon:"☀️" },
-  { key:"tarde",    label:"Tarde",    hora:"17:00–21:00", icon:"🌆" },
+  { key:"manana",   label:"Mañana",   hora:"09:00–14:00", icon:"🌅", desdeMins: 9*60,   hastaMins: 14*60 },
+  { key:"mediodia", label:"Mediodía", hora:"14:00–17:00", icon:"☀️", desdeMins: 14*60,  hastaMins: 17*60 },
+  { key:"tarde",    label:"Tarde",    hora:"17:00–21:00", icon:"🌆", desdeMins: 17*60,  hastaMins: 21*60 },
 ];
+
+// Convierte rangos específicos [{desde:"HH:MM", hasta:"HH:MM"}] → Set de keys de franjas
+function rangosAFranjas(rangos) {
+  const toMins = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+  const resultado = new Set();
+  for (const r of rangos) {
+    const d = toMins(r.desde), h = toMins(r.hasta);
+    for (const f of FRANJAS) {
+      // Solape: el rango empieza antes de que acabe la franja Y acaba después de que empiece
+      if (d < f.hastaMins && h > f.desdeMins) resultado.add(f.key);
+    }
+  }
+  return resultado;
+}
 
 // ══════════════════════════════════════════════
 // PANTALLA: TOKEN INVÁLIDO / ENLACE CADUCADO
@@ -161,7 +175,9 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
   const [practicasDeseadas, setPracticasDeseadas] = useState(2);
   const [viajePropio, setViajePropio] = useState(false);
 
-  const tieneTransporte = alumno.transporte === true || alumno.transporte === "true" || alumno.transporte === 1;
+  // Alumno de pueblo: tiene transporte asignado O su localidad no es Trujillo
+  const tieneTransporte = alumno.transporte === true || alumno.transporte === "true" || alumno.transporte === 1
+    || (alumno.localidad && alumno.localidad.trim().toLowerCase() !== "trujillo");
   const esTransporteB = tieneTransporte && alumno.permiso === "B";
   const limiteDias    = (tieneTransporte && !viajePropio) ? 2 : 5;
   const limiteMaxPrac = (esTransporteB && !viajePropio) ? 4 : (alumno.maxPracticasSemana || 8);
@@ -509,7 +525,7 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
         <div style={{ fontSize:11, color:"#9A9A9A", lineHeight:1.6, textAlign:"center", marginBottom:10, padding:"0 4px" }}>
           Una vez enviada tu disponibilidad, la autoescuela te asignará las prácticas para la semana que viene, quedando confirmadas según la petición que envías. <strong style={{ color:"#C8102E" }}>Asegúrate de que esta disponibilidad es correcta. Una vez confirmadas las prácticas por la escuela no hay posibilidad de cambio.</strong>
         </div>
-        <button disabled={!formularioValido} onClick={()=>onEnviar(disponibilidad, practicasDeseadas)} style={{ width:"100%", padding:16, background:formularioValido?"#C8102E":"#C0C0C0", color:"white", border:"none", borderRadius:14, fontFamily:"inherit", fontSize:16, fontWeight:700, cursor:formularioValido?"pointer":"not-allowed", boxShadow:formularioValido?"0 6px 20px rgba(200,16,46,0.3)":"none" }}>
+        <button disabled={!formularioValido} onClick={()=>onEnviar(disponibilidad, practicasDeseadas, rangosDia, modoDia)} style={{ width:"100%", padding:16, background:formularioValido?"#C8102E":"#C0C0C0", color:"white", border:"none", borderRadius:14, fontFamily:"inherit", fontSize:16, fontWeight:700, cursor:formularioValido?"pointer":"not-allowed", boxShadow:formularioValido?"0 6px 20px rgba(200,16,46,0.3)":"none" }}>
           {formularioValido ? "Enviar disponibilidad" : "Selecciona al menos un día"}
         </button>
       </div>
@@ -544,17 +560,23 @@ export default function AppAlumno() {
     }).catch(() => setEstado("invalido"));
   }, [tokenStr]);
 
-  const handleEnviar = async (disp, pracs) => {
+  const handleEnviar = async (disp, pracs, rangosDia, modoDia) => {
     if (!tokenData || enviando) return;
     setEnviando(true);
     try {
-      // Convertir disponibilidad (Map de Sets) a objeto franjas_disponibles
+      // Convertir disponibilidad a franjas; si el día usa rangos específicos, convertirlos
       const franjas_disponibles = {};
-      for (const [dia, set] of Object.entries(disp)) {
-        if (set instanceof Set) {
-          franjas_disponibles[dia] = [...set];
-        } else if (Array.isArray(set)) {
-          franjas_disponibles[dia] = set;
+      const DIAS_S = Object.keys(disp);
+      for (const dia of DIAS_S) {
+        const modo = modoDia?.[dia] || "franjas";
+        if (modo === "especifico" && rangosDia?.[dia]?.length > 0) {
+          // Convertir rangos a franjas por solapamiento
+          const franjasSet = rangosAFranjas(rangosDia[dia]);
+          if (franjasSet.size > 0) franjas_disponibles[dia] = [...franjasSet];
+        } else {
+          const set = disp[dia];
+          if (set instanceof Set && set.size > 0) franjas_disponibles[dia] = [...set];
+          else if (Array.isArray(set) && set.length > 0) franjas_disponibles[dia] = set;
         }
       }
       // Guardar en Supabase
