@@ -1966,7 +1966,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
                   });
                   setModalP(null);
                 }} style={{ padding:12, borderRadius:12, border:"1.5px solid #1A3A6B33", background:"#F0F4FF", color:"#1A3A6B", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>💾 Guardar cambios</button>
-                <button onClick={()=>{setPlanning(p=>{const n={...p};const orig=modalP.diaOrig||modalP.dia;n[orig]=(n[orig]||[]).filter(x=>x!==modalP.p);return n;});setModalP(null);}} style={{ padding:12, borderRadius:12, border:"1.5px solid #C8102E33", background:"#FDF5F5", color:"#C8102E", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>🗑 Eliminar práctica</button>
+                <button onClick={()=>{setPlanning(p=>{const n={...p};const orig=modalP.diaOrig||modalP.dia;n[orig]=(n[orig]||[]).filter(x=>!(x.alumnoId===modalP.p.alumnoId&&x.desde===modalP.p.desde&&x.profesor===modalP.p.profesor&&x.tipo===modalP.p.tipo));return n;});setModalP(null);}} style={{ padding:12, borderRadius:12, border:"1.5px solid #C8102E33", background:"#FDF5F5", color:"#C8102E", fontFamily:"inherit", fontSize:14, fontWeight:600, cursor:"pointer" }}>🗑 Eliminar práctica</button>
               </div>
             </div>
           </div>
