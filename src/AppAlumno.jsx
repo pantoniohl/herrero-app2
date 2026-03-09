@@ -159,9 +159,11 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
     Object.fromEntries(DIAS_SEMANA.map(d => [d, []]))
   );
   const [practicasDeseadas, setPracticasDeseadas] = useState(2);
+  const [viajePropio, setViajePropio] = useState(false);
 
-  const limiteDias    = alumno.transporte ? 2 : 5;
-  const limiteMaxPrac = alumno.transporte ? 4 : (alumno.maxPracticasSemana || 8);
+  const esTransporteB = alumno.transporte && alumno.permiso === "B";
+  const limiteDias    = (alumno.transporte && !viajePropio) ? 2 : 5;
+  const limiteMaxPrac = (esTransporteB && !viajePropio) ? 4 : (alumno.maxPracticasSemana || 8);
   const diasSel = DIAS_SEMANA.filter(d =>
     modoDia[d] === "franjas" ? disponibilidad[d].size > 0 : rangosDia[d].length > 0
   );
@@ -424,6 +426,35 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
             </div>
           );
         })}
+
+        {/* VIAJE PROPIO — solo B con transporte */}
+        {esTransporteB && diasSel.length > 0 && (
+          <div style={{ marginBottom:12 }}>
+            <button onClick={()=>{
+              const nuevo = !viajePropio;
+              setViajePropio(nuevo);
+              // si se activa viaje propio y tenía ≤4, resetear a 2 para que elija
+              // si se desactiva y tenía >4, bajar a 4
+              if (!nuevo && practicasDeseadas > 4) setPracticasDeseadas(4);
+            }} style={{
+              width:"100%", padding:"13px 16px", borderRadius:12, cursor:"pointer",
+              fontFamily:"inherit", fontSize:14, fontWeight:700,
+              border:"1.5px solid "+(viajePropio?"#1A6B3A":"#1A6B3A44"),
+              background:viajePropio?"#1A6B3A":"#EEF7F1",
+              color:viajePropio?"white":"#1A6B3A",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+              boxShadow:viajePropio?"0 4px 14px rgba(26,107,58,0.25)":"none",
+            }}>
+              <span style={{ fontSize:18 }}>{viajePropio ? "✓" : "🚗"}</span>
+              {viajePropio ? "Viajo por mi cuenta · Hasta 8 prácticas" : "Viajo por mi cuenta (sin furgoneta)"}
+            </button>
+            {viajePropio && (
+              <div style={{ fontSize:11, color:"#5A7A5A", textAlign:"center", marginTop:6 }}>
+                Puedes elegir hasta 8 prácticas y cualquier día de la semana.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* CANTIDAD DE PRÁCTICAS — solo B, solo si hay días seleccionados */}
         {alumno.permiso === "B" && diasSel.length > 0 && (
