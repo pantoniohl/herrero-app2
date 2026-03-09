@@ -1819,6 +1819,12 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
       setPlanning(res.planning);
       setSinAsignar(res.sinAsignar);
       setRutasTransporte(res.rutasTransporte || {});
+      // Guardar en Supabase para persistir entre sesiones
+      if (configId) {
+        try {
+          await guardarPlanning(configId, { practicas: res.planning, sinAsignar: res.sinAsignar });
+        } catch(eSave) { console.warn("No se pudo guardar planning:", eSave); }
+      }
     } catch(e) {
       console.error("Error generando planning:", e);
       alert("Error al generar planning: " + (e.message || e));
@@ -3209,6 +3215,14 @@ export default function AppOficina() {
             .select("*, alumnos(nombre, apellidos, telefono)")
             .eq("config_id", configData.id);
           if (toks) setTokens(toks);
+          // Restaurar planning guardado si existe
+          try {
+            const pData = await getPlanning(configData.id);
+            if (pData?.practicas) {
+              setPlanning(pData.practicas);
+              setSinAsignar(pData.sin_asignar || []);
+            }
+          } catch(ePlan) { console.warn("No se pudo cargar planning:", ePlan); }
         }
       } catch (e) {
         console.error("Error cargando datos:", e);
