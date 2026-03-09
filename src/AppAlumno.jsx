@@ -556,22 +556,26 @@ export default function AppAlumno() {
     }).catch(() => setEstado("invalido"));
   }, [tokenStr]);
 
+  const FRANJAS_HORAS = { manana:[{desde:"09:00",hasta:"14:00"}], mediodia:[{desde:"14:00",hasta:"17:00"}], tarde:[{desde:"17:00",hasta:"21:00"}] };
   const handleEnviar = async (disp, pracs, rangosDia, modoDia) => {
     if (!tokenData || enviando) return;
     setEnviando(true);
     try {
-      // Convertir disponibilidad a franjas; si el día usa rangos específicos, convertirlos
+      // Convertir disponibilidad a tramos {desde,hasta} — formato único
       const franjas_disponibles = {};
       const DIAS_S = Object.keys(disp);
       for (const dia of DIAS_S) {
         const modo = modoDia?.[dia] || "franjas";
         if (modo === "especifico" && rangosDia?.[dia]?.length > 0) {
-          // Guardar rangos exactos — el motor los leerá directamente
-          franjas_disponibles[dia] = { _rangos: rangosDia[dia] };
+          // Rangos exactos del alumno — ya son {desde,hasta}
+          franjas_disponibles[dia] = rangosDia[dia];
         } else {
+          // Franjas estándar → convertir a tramos horarios exactos
           const set = disp[dia];
-          if (set instanceof Set && set.size > 0) franjas_disponibles[dia] = [...set];
-          else if (Array.isArray(set) && set.length > 0) franjas_disponibles[dia] = set;
+          const keys = set instanceof Set ? [...set] : (Array.isArray(set) ? set : []);
+          if (keys.length > 0) {
+            franjas_disponibles[dia] = keys.flatMap(k => FRANJAS_HORAS[k] || []);
+          }
         }
       }
       // Guardar en Supabase
