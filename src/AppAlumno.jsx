@@ -283,6 +283,50 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
           </div>
         </div>
 
+        {/* CANTIDAD DE PRÁCTICAS — solo B, antes de elegir días */}
+        {alumno.permiso === "B" && (
+          <div style={{ background:"white", borderRadius:14, border:"1.5px solid #E8E0D5", padding:"16px", marginBottom:14 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:"#1C1C1C", marginBottom:14 }}>¿Cuántas prácticas quieres esta semana?</div>
+            {/* VIAJE PROPIO — solo B con transporte, sin depender de diasSel */}
+            {esTransporteB && (
+              <div style={{ marginBottom:12 }}>
+                <button onClick={()=>{
+                  const nuevo = !viajePropio;
+                  setViajePropio(nuevo);
+                  if (!nuevo && practicasDeseadas > 4) setPracticasDeseadas(4);
+                }} style={{
+                  width:"100%", padding:"11px 16px", borderRadius:12, cursor:"pointer",
+                  fontFamily:"inherit", fontSize:13, fontWeight:700,
+                  border:"1.5px solid "+(viajePropio?"#1A6B3A":"#1A6B3A44"),
+                  background:viajePropio?"#1A6B3A":"#EEF7F1",
+                  color:viajePropio?"white":"#1A6B3A",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                  boxShadow:viajePropio?"0 4px 14px rgba(26,107,58,0.25)":"none",
+                  marginBottom:8,
+                }}>
+                  <span style={{ fontSize:16 }}>{viajePropio ? "✓" : "🚗"}</span>
+                  {viajePropio ? "Viajo por mi cuenta · Activo" : "Viajo por mi cuenta (sin furgoneta)"}
+                </button>
+                {!viajePropio && (
+                  <div style={{ fontSize:11, color:"#5A5A9A", textAlign:"center", marginBottom:8 }}>
+                    Sin furgoneta: máx {limiteMaxPrac} prácticas y {limiteDias} días. Activa si vas solo.
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
+              {Array.from({ length: Math.min(limiteMaxPrac, 8) }, (_,i) => i+1).map(n => (
+                <button key={n} onClick={()=>setPracticasDeseadas(n)} style={{ width:46, height:46, borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:16, fontWeight:700, border:"2px solid "+(practicasDeseadas===n?"#1A3A6B":"#D8D8D8"), background:practicasDeseadas===n?"#1A3A6B":"white", color:practicasDeseadas===n?"white":"#1C1C1C", transition:"all 0.15s" }}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize:11, color:"#9A9A9A", textAlign:"center", marginTop:10, lineHeight:1.5 }}>
+              El sistema intentará asignarte el número de prácticas que pidas.
+            </div>
+          </div>
+        )}
+
         {/* RESTRICCIÓN TRANSPORTE */}
         {alumno.transporte && (
           <div style={{ background:"#EEF3FB", border:"1.5px solid #1A3A6B33", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#1A3A6B", lineHeight:1.6 }}>
@@ -427,47 +471,6 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
           );
         })}
 
-        {/* VIAJE PROPIO — solo B con transporte */}
-        {esTransporteB && diasSel.length > 0 && (
-          <div style={{ marginBottom:12 }}>
-            <button onClick={()=>{
-              const nuevo = !viajePropio;
-              setViajePropio(nuevo);
-              // si se activa viaje propio y tenía ≤4, resetear a 2 para que elija
-              // si se desactiva y tenía >4, bajar a 4
-              if (!nuevo && practicasDeseadas > 4) setPracticasDeseadas(4);
-            }} style={{
-              width:"100%", padding:"13px 16px", borderRadius:12, cursor:"pointer",
-              fontFamily:"inherit", fontSize:14, fontWeight:700,
-              border:"1.5px solid "+(viajePropio?"#1A6B3A":"#1A6B3A44"),
-              background:viajePropio?"#1A6B3A":"#EEF7F1",
-              color:viajePropio?"white":"#1A6B3A",
-              display:"flex", alignItems:"center", justifyContent:"center", gap:8,
-              boxShadow:viajePropio?"0 4px 14px rgba(26,107,58,0.25)":"none",
-            }}>
-              <span style={{ fontSize:18 }}>{viajePropio ? "✓" : "🚗"}</span>
-              {viajePropio ? "Viajo por mi cuenta · Hasta 8 prácticas" : "Viajo por mi cuenta (sin furgoneta)"}
-            </button>
-            {viajePropio && (
-              <div style={{ fontSize:11, color:"#5A7A5A", textAlign:"center", marginTop:6 }}>
-                Puedes elegir hasta 8 prácticas y cualquier día de la semana.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* CANTIDAD DE PRÁCTICAS — solo B, solo si hay días seleccionados */}
-        {alumno.permiso === "B" && diasSel.length > 0 && (
-          <div style={{ background:"white", borderRadius:14, border:"1.5px solid #E8E0D5", padding:"16px", marginTop:4, marginBottom:14 }}>
-            <div style={{ fontSize:14, fontWeight:700, color:"#1C1C1C", marginBottom:14 }}>¿Cuántas prácticas quieres esta semana?</div>
-            <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
-              {Array.from({ length: Math.min(limiteMaxPrac, 8) }, (_,i) => i+1).map(n => (
-                <button key={n} onClick={()=>setPracticasDeseadas(n)} style={{ width:46, height:46, borderRadius:10, cursor:"pointer", fontFamily:"inherit", fontSize:17, fontWeight:700, border:"1.5px solid "+(practicasDeseadas===n?"#1A3A6B":"#E8E0D5"), background:practicasDeseadas===n?"#1A3A6B":"white", color:practicasDeseadas===n?"white":"#7A7A7A" }}>{n}</button>
-              ))}
-            </div>
-            <div style={{ fontSize:11, color:"#9A9A9A", textAlign:"center", marginTop:10, lineHeight:1.5 }}>El sistema intentará asignarte las que pueda según la disponibilidad de la autoescuela</div>
-          </div>
-        )}
 
         {/* RESUMEN PREVIO */}
         {formularioValido && (
