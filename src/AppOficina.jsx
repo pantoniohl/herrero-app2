@@ -283,7 +283,7 @@ function jornadaValida(desde, hasta, ocupaciones) {
 function elegirHueco(huecos, durMin, ocupaciones, capBloqueo) {
   const validos = huecos
     .filter(h => (h.hasta - h.desde) >= durMin)
-    .filter(h => jornadaValida(h.desde, h.desde + durMin, ocupaciones));
+    .filter(() => true); // sin restricción de jornada continua: el profesor puede tener huecos
   if (validos.length === 0) return null;
   // Ordenar por adyacencia (menor distancia = mejor)
   validos.sort((a, b) =>
