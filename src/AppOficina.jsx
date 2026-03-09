@@ -339,7 +339,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
   ];
   for (const alumno of ordenados) {
     const duracion = alumno.permiso === "B" ? DUR_B : DUR_PESADOS;
-    const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas || 8) : 2;
+    const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas ?? 8) : 2;
     let asignadas = 0;
     let diasAsignados = 0;
     const diasDisponibles = alumno.disponibilidad || {}; // { [dia]: { estado, desde, hasta } }
@@ -645,28 +645,21 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
         return 5;
       };
 
-      // Agrupar B por alumno (mantener contigüidad)
-      // Para no-B: agrupar por tipo manteniendo el orden de aparición (sin orden fijo)
+      // Agrupar B por alumno (mantener contigüidad): bloques de 2 prácticas del mismo alumno juntas
+      // Para no-B: ordenar por tipo
       const bPorAlumno = {};
-      const noBsPorTipo = {}; // clave: "permiso_tipo"
-      const ordenTiposAparicion = []; // para mantener orden de aparición de tipos
+      const noBs = [];
       for (const p of pracs) {
         if (p.permiso === "B") {
           if (!bPorAlumno[p.alumnoId]) bPorAlumno[p.alumnoId] = [];
           bPorAlumno[p.alumnoId].push(p);
         } else {
-          const clave = p.permiso + "_" + p.tipo;
-          if (!noBsPorTipo[clave]) {
-            noBsPorTipo[clave] = [];
-            ordenTiposAparicion.push(clave);
-          }
-          noBsPorTipo[clave].push(p);
+          noBs.push(p);
         }
       }
       // Bloques B: cada alumno como grupo contiguo
-      const bloquesB = Object.values(bPorAlumno);
-      // No-B: agrupados por tipo en orden de aparición
-      const noBs = ordenTiposAparicion.flatMap(k => noBsPorTipo[k]);
+      const bloquesB = Object.values(bPorAlumno); // array de arrays
+      noBs.sort((a, b) => ordenTipo(a) - ordenTipo(b));
 
       // Re-colocar: primero todos los bloques B, luego los no-B por tipo
       let cursor = 0; // índice en tramosDisp
@@ -1218,7 +1211,7 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
         const profExcel = (row[6]||"").toString().trim();
         const vehExcel  = (row[7]||"").toString().trim();
         const transporte= (row[8]||"NO").toString().trim().toUpperCase() === "SI";
-        const maxPrac   = row[9] ? parseInt(row[9]) : (permiso === "B" ? (transporte ? 4 : 6) : 2);
+        const maxPrac   = row[9] ? parseInt(row[9]) : (permiso === "B" ? (transporte ? 4 : 8) : 2);
 
         // C y C+E → localidad siempre Trujillo
         const localidad = (permiso === "B")
