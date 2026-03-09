@@ -339,7 +339,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
   ];
   for (const alumno of ordenados) {
     const duracion = alumno.permiso === "B" ? DUR_B : DUR_PESADOS;
-    const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas ?? 8) : 2;
+    const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas || 8) : 2;
     let asignadas = 0;
     let diasAsignados = 0;
     const diasDisponibles = alumno.disponibilidad || {}; // { [dia]: { estado, desde, hasta } }
@@ -1211,7 +1211,7 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
         const profExcel = (row[6]||"").toString().trim();
         const vehExcel  = (row[7]||"").toString().trim();
         const transporte= (row[8]||"NO").toString().trim().toUpperCase() === "SI";
-        const maxPrac   = row[9] ? parseInt(row[9]) : (permiso === "B" ? (transporte ? 4 : 8) : 2);
+        const maxPrac   = row[9] ? parseInt(row[9]) : (permiso === "B" ? (transporte ? 4 : 6) : 2);
 
         // C y C+E → localidad siempre Trujillo
         const localidad = (permiso === "B")
@@ -2074,6 +2074,9 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
   const [simulando, setSimulando] = useState(false);
+  const [modalEdicion, setModalEdicion] = useState(null); // { alumnoId, dispId, nombre, diasActuales }
+  const [diasModal, setDiasModal] = useState({}); // { lunes: ["manana","tarde"], ... }
+  const [guardandoModal, setGuardandoModal] = useState(false);
 
   const simularRespuestas = async () => {
     if (!configId) return;
@@ -2130,6 +2133,50 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
     await cargar();
     setSimulando(false);
     alert(`✅ ${ok} respuestas simuladas${err > 0 ? ` · ⚠️ ${err} errores` : ''}`);
+  };
+
+  const DIAS_SEMANA_M = ["lunes","martes","miercoles","jueves","viernes"];
+  const FRANJAS_M = ["manana","mediodia","tarde"];
+  const FRANJAS_LM = { manana:"Mañana", mediodia:"Mediodía", tarde:"Tarde" };
+  const DIAS_LM = { lunes:"Lunes", martes:"Martes", miercoles:"Miércoles", jueves:"Jueves", viernes:"Viernes" };
+
+  const abrirModal = (alumnoId, dispId, nombre, diasActuales) => {
+    setDiasModal(diasActuales ? JSON.parse(JSON.stringify(diasActuales)) : {});
+    setModalEdicion({ alumnoId, dispId, nombre });
+  };
+
+  const toggleFranja = (dia, franja) => {
+    setDiasModal(prev => {
+      const curr = prev[dia] || [];
+      const existe = curr.includes(franja);
+      return { ...prev, [dia]: existe ? curr.filter(f=>f!==franja) : [...curr, franja] };
+    });
+  };
+
+  const guardarModal = async () => {
+    if (!modalEdicion || !configId) return;
+    setGuardandoModal(true);
+    try {
+      const diasFiltrados = Object.fromEntries(
+        Object.entries(diasModal).filter(([,fs]) => fs && fs.length > 0)
+      );
+      if (modalEdicion.dispId) {
+        // Editar existente
+        await supabase.from("disponibilidad").update({ dias: diasFiltrados }).eq("id", modalEdicion.dispId);
+      } else {
+        // Crear nueva (introducción manual)
+        await supabase.from("disponibilidad").insert({
+          alumno_id: modalEdicion.alumnoId,
+          config_id: configId,
+          dias: diasFiltrados,
+          practicas_deseadas: 2,
+          manual: true,
+        });
+      }
+      setModalEdicion(null);
+      await cargar();
+    } catch(e) { alert("Error guardando: " + e.message); }
+    finally { setGuardandoModal(false); }
   };
 
   const cargar = async () => {
@@ -2211,6 +2258,10 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
             const a = alumnos.find(al => al.id === t.alumno_id) || t.alumnos || {};
             return (
               <div key={t.id} style={{ background:"#FFF8F0", borderRadius:10, border:"1.5px solid #FFE0B2", padding:"10px 14px", marginBottom:6, display:"flex", alignItems:"center", gap:10 }}>
+                <button onClick={()=>abrirModal(a.id||t.alumno_id, null, (a.apellidos||"–")+", "+(a.nombre||"–"), null)}
+                  style={{ marginLeft:"auto", padding:"5px 12px", background:"#1A3A6B", color:"white", border:"none", borderRadius:20, cursor:"pointer", fontSize:12, fontWeight:600 }}>
+                  ✏️ Introducir
+                </button>
                 <div style={{ width:32, height:32, borderRadius:"50%", background:"#FF9800", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, flexShrink:0 }}>{(a.nombre||"?")[0]}{(a.apellidos||"?")[0]}</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos||"–"}, {a.nombre||"–"}</div>
@@ -2238,8 +2289,15 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                     <div style={{ fontSize:14, fontWeight:700 }}>{a.apellidos||"–"}, {a.nombre||"–"}</div>
                     <div style={{ fontSize:11, color:"#5A7A5A" }}>{a.localidad||""} · {a.permiso||""}</div>
                   </div>
-                  <div style={{ fontSize:11, color:"#2E7D32", fontWeight:600 }}>
-                    {d.created_at ? new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}) : ""}
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ fontSize:11, color:"#2E7D32", fontWeight:600 }}>
+                      {d.created_at ? new Date(d.created_at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"}) : ""}
+                      {d.manual && <span style={{ marginLeft:4, fontSize:10, background:"#FFF3E0", color:"#E65100", borderRadius:8, padding:"1px 5px" }}>manual</span>}
+                    </div>
+                    <button onClick={()=>abrirModal(d.alumno_id, d.id, (a.apellidos||"–")+", "+(a.nombre||"–"), d.dias)}
+                      style={{ padding:"4px 10px", background:"#1A3A6B", color:"white", border:"none", borderRadius:14, cursor:"pointer", fontSize:11, fontWeight:600 }}>
+                      ✏️ Editar
+                    </button>
                   </div>
                 </div>
                 <div style={{ padding:"10px 14px" }}>
@@ -2277,6 +2335,45 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
         <div style={{ textAlign:"center", padding:"30px 20px", color:"#7A7A7A" }}>
           <div style={{ fontSize:32, marginBottom:8 }}>⏳</div>
           <div style={{ fontSize:14 }}>Esperando respuestas... (actualiza cada 30s)</div>
+        </div>
+      )}
+
+      {/* Modal edición manual */}
+      {modalEdicion && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div style={{ background:"white", borderRadius:16, padding:20, width:"100%", maxWidth:420, maxHeight:"85vh", overflowY:"auto" }}>
+            <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>
+              {modalEdicion.dispId ? "✏️ Editar disponibilidad" : "✏️ Introducir disponibilidad"}
+            </div>
+            <div style={{ fontSize:12, color:"#555", marginBottom:14 }}>{modalEdicion.nombre}</div>
+            {DIAS_SEMANA_M.map(dia => (
+              <div key={dia} style={{ marginBottom:10 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:"#1A3A6B", marginBottom:5 }}>{DIAS_LM[dia]}</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  {FRANJAS_M.map(franja => {
+                    const sel = (diasModal[dia]||[]).includes(franja);
+                    return (
+                      <button key={franja} onClick={()=>toggleFranja(dia, franja)}
+                        style={{ flex:1, padding:"6px 4px", borderRadius:8, border:"1.5px solid "+(sel?"#1A3A6B":"#DDD"),
+                          background:sel?"#1A3A6B":"#F7F7F7", color:sel?"white":"#555", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                        {FRANJAS_LM[franja]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:8, marginTop:16 }}>
+              <button onClick={()=>setModalEdicion(null)}
+                style={{ flex:1, padding:10, borderRadius:10, border:"1px solid #DDD", background:"#F5F5F5", cursor:"pointer", fontSize:13 }}>
+                Cancelar
+              </button>
+              <button onClick={guardarModal} disabled={guardandoModal}
+                style={{ flex:2, padding:10, borderRadius:10, border:"none", background:"#1A3A6B", color:"white", cursor:"pointer", fontSize:13, fontWeight:700 }}>
+                {guardandoModal ? "⏳ Guardando..." : "💾 Guardar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
