@@ -1799,14 +1799,22 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           // Convertir franjas de Supabase al formato del motor
           disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => {
             const val = diasDisp[d];
-            // Rangos exactos guardados desde modo personalizado
-            if (val && typeof val === "object" && !Array.isArray(val) && val._rangos) {
-              return [d, { estado: "tramos", tramos: val._rangos }];
+            if (!val || (Array.isArray(val) && val.length === 0)) return [d, { estado: "no" }];
+            // Nuevo formato: array de tramos {desde,hasta}
+            if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object" && val[0].desde) {
+              // Cubren todo el día (09:00-21:00) → estado todo; si no, tramos exactos
+              const totalMin = val.reduce((s,t)=>{ const toM=x=>{const[h,m]=x.split(':').map(Number);return h*60+m;}; return s+(toM(t.hasta)-toM(t.desde)); }, 0);
+              if (totalMin >= 720) return [d, { estado: "todo" }]; // ≥12h = todo el día
+              return [d, { estado: "tramos", tramos: val }];
             }
-            const franjas = Array.isArray(val) ? val : [];
-            if (franjas.length === 0) return [d, { estado: "no" }];
-            if (franjas.includes("manana") && franjas.includes("mediodia") && franjas.includes("tarde")) return [d, { estado: "todo" }];
-            return [d, { estado: "tramos", tramos: franjaATramos(franjas) }];
+            // Retrocompatibilidad: strings de franjas antiguas
+            if (Array.isArray(val) && val.length > 0 && typeof val[0] === "string") {
+              if (val.includes("manana") && val.includes("mediodia") && val.includes("tarde")) return [d, { estado: "todo" }];
+              return [d, { estado: "tramos", tramos: franjaATramos(val) }];
+            }
+            // Retrocompatibilidad: {_rangos:[...]} antiguo
+            if (val._rangos) return [d, { estado: "tramos", tramos: val._rangos }];
+            return [d, { estado: "no" }];
           }));
         } else {
           // Sin disponibilidad registrada: disponible todo
@@ -2240,14 +2248,17 @@ function generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg) {
       } else {
         html += `<div class="dias-grid">`;
         DIAS_SEMANA.forEach(dia => {
-          const franjas = dias[dia] || [];
-          if (!franjas.length) return;
-          // Color del día según número de franjas
-          const bgColor = franjas.length === 3 ? "#E8F5E9" : franjas.length === 2 ? "#FFF9C4" : "#F3F3F3";
+          const tramos = dias[dia] || [];
+          if (!tramos.length) return;
+          // Color del día según número de tramos
+          const bgColor = tramos.length >= 3 ? "#E8F5E9" : tramos.length === 2 ? "#FFF9C4" : "#F3F3F3";
           html += `<div class="dia-item" style="background:${bgColor};border-color:#CCC">
             <div class="dia-nombre">${DIAS_L[dia]||dia}</div>`;
-          franjas.forEach(f => {
-            html += `<span class="franja-tag" style="background:${FRANJA_COLOR[f]||"#EEE"};border:1px solid ${FRANJA_BORDER[f]||"#CCC"}">${FRANJAS_L[f]||f}</span>`;
+          tramos.forEach(t => {
+            const label = typeof t === "string" ? (FRANJAS_L[t]||t) : `⏱ ${t.desde}–${t.hasta}`;
+            const bg = typeof t === "string" ? (FRANJA_COLOR[t]||"#EEE") : "#DDEEFF";
+            const bd = typeof t === "string" ? (FRANJA_BORDER[t]||"#CCC") : "#7AAEDD";
+            html += `<span class="franja-tag" style="background:${bg};border:1px solid ${bd}">${label}</span>`;
           });
           html += `</div>`;
         });
@@ -2491,8 +2502,8 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
           {disponibilidades.map(d => {
             const a = d.alumnos || alumnos.find(al => al.id === d.alumno_id) || {};
             const franjas = d.dias || {};
-            const diasConFranjas = Object.entries(franjas).filter(([,fs]) => 
-              fs && (Array.isArray(fs) ? fs.length > 0 : (fs._rangos && fs._rangos.length > 0)));
+            const diasConFranjas = Object.entries(franjas).filter(([,fs]) =>
+              fs && Array.isArray(fs) && fs.length > 0);
             return (
               <div key={d.id} style={{ background:"white", borderRadius:12, border:"1.5px solid #C8E6C9", marginBottom:10, overflow:"hidden" }}>
                 <div style={{ background:"#F1F8E9", borderBottom:"1px solid #C8E6C9", padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
@@ -2522,20 +2533,13 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
                     <div style={{ fontSize:12, color:"#9A9A9A", fontStyle:"italic" }}>Sin franjas específicas indicadas</div>
                   ) : (
                     <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-                      {diasConFranjas.map(([dia, franjasList]) => {
-                         if (franjasList && !Array.isArray(franjasList) && franjasList._rangos) {
-                           return franjasList._rangos.map((r,ri) => (
-                             <span key={dia+'r'+ri} style={{ background:"#E3F2FD", color:"#1565C0", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
-                               {DIAS_L[dia]||dia} ⏱ {r.desde}–{r.hasta}
-                             </span>
-                           ));
-                         }
-                         return (franjasList||[]).map(franja => (
-                           <span key={dia+franja} style={{ background:"#E8F5E9", color:"#2E7D32", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>
-                             {DIAS_L[dia]||dia} {FRANJAS_L[franja]||franja}
-                           </span>
-                         ));
-                       })}
+                      {diasConFranjas.map(([dia, tramos]) =>
+                         tramos.map((t, ti) => (
+                           typeof t === "string"
+                             ? <span key={dia+t} style={{ background:"#E8F5E9", color:"#2E7D32", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>{DIAS_L[dia]||dia} {FRANJAS_L[t]||t}</span>
+                             : <span key={dia+ti} style={{ background:"#E3F2FD", color:"#1565C0", borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:600 }}>{DIAS_L[dia]||dia} ⏱ {t.desde}–{t.hasta}</span>
+                         ))
+                       )}
                     </div>
                   )}
                   {d.practicas_deseadas > 0 && (
