@@ -546,26 +546,28 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
 
           } else {
             // Módulo B: no necesita vehículo específico
-            // Si es la 2ª práctica del día, DEBE ser contigua a la 1ª (optimización)
+            // Si es la 2ª práctica del día, DEBE ser contigua a la 1ª con el MISMO profesor
             let tramosParaB = tramosComunes;
             if (asignadasHoy >= 1) {
-              // Buscar la práctica anterior del mismo alumno en este día
+              // Buscar la práctica anterior del mismo alumno+profesor en este día
               const pracAnterior = planning[dia]
-                .filter(p => p.alumnoId === alumno.id)
+                .filter(p => p.alumnoId === alumno.id && p.profesor === profKey)
                 .sort((a, b) => toMin(b.hasta) - toMin(a.hasta))[0]; // la más reciente
               if (pracAnterior) {
                 const inicioContiguo = toMin(pracAnterior.hasta);
-                // Solo aceptar el tramo que empieza exactamente donde terminó la anterior
+                // Solo aceptar hueco que empiece exactamente donde terminó la anterior
                 tramosParaB = tramosComunes
                   .map(t => ({
                     desde: Math.max(t.desde, inicioContiguo),
                     hasta: t.hasta,
                   }))
                   .filter(t => t.desde === inicioContiguo && (t.hasta - t.desde) >= duracion);
+                // Si no hay hueco contiguo con este profesor, no asignar (sin fallback)
+                if (tramosParaB.length === 0) continue;
               }
             }
             const hueco = elegirHueco(
-              tramosParaB.length ? tramosParaB : tramosComunes,
+              tramosParaB,
               duracion,
               ocupacionesProf,
               capProf
