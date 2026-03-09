@@ -683,7 +683,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
                 alumnoId: alumno.id,
                 alumnoNombre: alumno.apellidos + ", " + alumno.nombre,
                 profesor: profKey,
-                vehiculo: null,
+                vehiculo: alumno.cocheAsignado || null,
                 permiso: "B",
                 fase: null,
                 desde: toHHMM(hueco.desde),
@@ -2226,7 +2226,7 @@ function generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg) {
       const a = d.alumno;
       const nombre = (a.apellidos||"?") + ", " + (a.nombre||"?");
       const meta = [a.localidad, "Permiso " + (a.permiso||"?"), a.fase].filter(Boolean).join(" · ");
-      const transporte = a.transporte;
+      const transporte = a.transporte || (a.localidad && a.localidad.trim().toLowerCase() !== "trujillo");
       const deseadas = d.practicas_deseadas || "—";
       const dias = d.dias || {};
 
@@ -2797,7 +2797,7 @@ function InformePlanningAlumno({ alumno, planning, cfg }) {
           <div style={{ color:"white", fontWeight:800, fontSize:15 }}>{alumno.apellidos}, {alumno.nombre}</div>
           <div style={{ color:"white", opacity:0.85, fontSize:11, marginTop:2 }}>
             {alumno.localidad} · Permiso {alumno.permiso}{alumno.fase?" · "+alumno.fase:""}
-            {alumno.transporte && <span style={{ marginLeft:6, background:"rgba(255,255,255,0.25)", borderRadius:8, padding:"1px 7px", fontSize:10, fontWeight:700 }}>🚐 Con transporte</span>}
+            {(alumno.transporte||(alumno.localidad&&alumno.localidad.trim().toLowerCase()!=="trujillo")) && <span style={{ marginLeft:6, background:"rgba(255,255,255,0.25)", borderRadius:8, padding:"1px 7px", fontSize:10, fontWeight:700 }}>🚐 Con transporte</span>}
           </div>
         </div>
         <div style={{ textAlign:"right" }}>
@@ -3126,7 +3126,7 @@ function ModuloInformes({ planning, alumnos, cfg, tokens, configId }) {
       {vista==="alumnos" && (
         <div>
           {/* Botón ruta si hay alumnos con transporte */}
-          {alumnos.some(a=>a.transporte && DIAS_SEMANA.some(d=>(planning[d]||[]).some(p=>p.alumnoId===a.id))) && (
+          {alumnos.some(a=>(a.transporte||(a.localidad&&a.localidad.trim().toLowerCase()!=="trujillo")) && DIAS_SEMANA.some(d=>(planning[d]||[]).some(p=>p.alumnoId===a.id))) && (
             <div style={{ marginBottom:14, padding:"12px 14px", background:"#FFF3F3", borderRadius:10, border:"1.5px solid #C8102E", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
               <div>
                 <div style={{ fontWeight:700, fontSize:13, color:"#C8102E" }}>🚐 Hay alumnos con transporte esta semana</div>
