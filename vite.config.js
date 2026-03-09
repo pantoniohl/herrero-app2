@@ -3,7 +3,13 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/app-[hash].js',
+        chunkFileNames: 'assets/chunk-[hash].js',
+      }
+    }
+  }
 })
-// utf8 fix 
-
-// force rebuild v62 1773015658647
+// v65 1773017067710
