@@ -282,14 +282,10 @@ function jornadaValida(desde, hasta, ocupaciones) {
 // ─── Elegir mejor hueco para una práctica ───────────────────
 function elegirHueco(huecos, durMin, ocupaciones, capBloqueo) {
   const validos = huecos
-    .filter(h => (h.hasta - h.desde) >= durMin)
-    .filter(() => true); // sin restricción de jornada continua: el profesor puede tener huecos
+    .filter(h => (h.hasta - h.desde) >= durMin);
   if (validos.length === 0) return null;
-  // Ordenar por adyacencia (menor distancia = mejor)
-  validos.sort((a, b) =>
-    scoreAdyacencia(a, ocupaciones, capBloqueo) -
-    scoreAdyacencia(b, ocupaciones, capBloqueo)
-  );
+  // Compactar hacia el inicio del día: primer hueco disponible
+  validos.sort((a, b) => a.desde - b.desde);
   return { desde: validos[0].desde, hasta: validos[0].desde + durMin };
 }
 
