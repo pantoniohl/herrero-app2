@@ -691,6 +691,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
                 duracion,
                 tipo: "circulacion",
                 forzado: false,
+                disponDesde: Ve.length > 0 ? Ve[0].desde : null,
               };
               planning[dia].push(entrada);
               getOcup(ocupProf, profKey + "_" + dia).push(hueco);
@@ -805,6 +806,9 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
       // Colocar bloques B (contiguo dentro del bloque)
       for (const bloque of bloquesB) {
         const durTotal = bloque.reduce((s, p) => s + p.duracion, 0);
+        // Respetar disponibilidad del alumno: no empezar antes de su horario
+        const alumnoDesdeMin = bloque[0].disponDesde != null ? bloque[0].disponDesde : 0;
+        if (alumnoDesdeMin > cursorMin) cursorMin = alumnoDesdeMin;
         const inicio = siguienteHueco(durTotal);
         if (inicio === null) continue; // no cabe, dejar donde estaba
         let cur = inicio;
