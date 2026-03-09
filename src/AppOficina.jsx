@@ -605,6 +605,113 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
     }
   }
 
+  // ── FASE 2: Compactar jornadas por profesor ──────────────────
+  // Agrupa prácticas por tipo (B → C circ → C pista → C+E) y las
+  // recoloca desde el inicio de jornada del profesor, sin huecos.
+  // Las prácticas B del mismo alumno se mantienen siempre contiguas.
+  for (const dia of diasSemana) {
+    const profsDia = [...new Set(planning[dia].map(p => p.profesor))];
+    for (const prof of profsDia) {
+      const profConfigDia = configSemanal.profesores?.[prof]?.[dia]
+        || configSemanal.profesores?.[prof]?.dias?.[dia];
+      if (!profConfigDia) continue;
+
+      // Tramos disponibles del profesor (con pausa comida para Mamen/Javi)
+      let tramosDisp = tramosDisponibles(profConfigDia);
+      const capBloqueo = profConfigDia.capBloqueo;
+      tramosDisp = restarCAP(tramosDisp, capBloqueo);
+      if (prof === "mamen" || prof === "javi") {
+        // Pausa comida: bloquear 14:00-15:30 si no hay prácticas ya
+        const PAU_I = toMin("14:00"), PAU_F = toMin("15:30");
+        tramosDisp = tramosDisp.flatMap(t => {
+          if (t.hasta <= PAU_I || t.desde >= PAU_F) return [t];
+          const res = [];
+          if (t.desde < PAU_I) res.push({ desde: t.desde, hasta: PAU_I });
+          if (t.hasta > PAU_F) res.push({ desde: PAU_F, hasta: t.hasta });
+          return res;
+        });
+      }
+
+      // Prácticas del profesor este día
+      const pracs = planning[dia].filter(p => p.profesor === prof);
+
+      // Orden de tipos: B > C circulacion > C pista > C+E circulacion > C+E pista
+      const ordenTipo = p => {
+        if (p.permiso === "B") return 0;
+        if (p.permiso === "C"   && p.tipo === "circulacion") return 1;
+        if (p.permiso === "C"   && p.tipo === "pista")       return 2;
+        if (p.permiso === "C+E" && p.tipo === "circulacion") return 3;
+        if (p.permiso === "C+E" && p.tipo === "pista")       return 4;
+        return 5;
+      };
+
+      // Agrupar B por alumno (mantener contigüidad): bloques de 2 prácticas del mismo alumno juntas
+      // Para no-B: ordenar por tipo
+      const bPorAlumno = {};
+      const noBs = [];
+      for (const p of pracs) {
+        if (p.permiso === "B") {
+          if (!bPorAlumno[p.alumnoId]) bPorAlumno[p.alumnoId] = [];
+          bPorAlumno[p.alumnoId].push(p);
+        } else {
+          noBs.push(p);
+        }
+      }
+      // Bloques B: cada alumno como grupo contiguo
+      const bloquesB = Object.values(bPorAlumno); // array de arrays
+      noBs.sort((a, b) => ordenTipo(a) - ordenTipo(b));
+
+      // Re-colocar: primero todos los bloques B, luego los no-B por tipo
+      let cursor = 0; // índice en tramosDisp
+      let cursorMin = tramosDisp.length > 0 ? tramosDisp[0].desde : toMin("09:00");
+
+      function siguienteHueco(durMin) {
+        // Avanzar cursor hasta encontrar hueco suficiente
+        while (cursor < tramosDisp.length) {
+          const t = tramosDisp[cursor];
+          const inicio = Math.max(t.desde, cursorMin);
+          if (inicio + durMin <= t.hasta) return inicio;
+          cursor++;
+          if (cursor < tramosDisp.length) cursorMin = tramosDisp[cursor].desde;
+        }
+        return null;
+      }
+
+      function colocar(p, desde) {
+        const dur = p.duracion;
+        p.desde = toHHMM(desde);
+        p.hasta = toHHMM(desde + dur);
+        cursorMin = desde + dur;
+        // Si superamos el tramo actual, avanzar cursor
+        while (cursor < tramosDisp.length && cursorMin >= tramosDisp[cursor].hasta) {
+          cursor++;
+          if (cursor < tramosDisp.length) cursorMin = Math.max(cursorMin, tramosDisp[cursor].desde);
+        }
+      }
+
+      // Colocar bloques B (contiguo dentro del bloque)
+      for (const bloque of bloquesB) {
+        const durTotal = bloque.reduce((s, p) => s + p.duracion, 0);
+        const inicio = siguienteHueco(durTotal);
+        if (inicio === null) continue; // no cabe, dejar donde estaba
+        let cur = inicio;
+        for (const p of bloque) {
+          colocar(p, cur);
+          cur += p.duracion;
+        }
+      }
+
+      // Colocar no-B por tipo
+      for (const p of noBs) {
+        const inicio = siguienteHueco(p.duracion);
+        if (inicio === null) continue;
+        colocar(p, inicio);
+      }
+
+      // Actualizar planning[dia] con las posiciones nuevas (ya modificadas in-place)
+    }
+  }
+
   // Ordenar cada día por hora de inicio
   for (const dia of diasSemana) {
     planning[dia].sort((a, b) => toMin(a.desde) - toMin(b.desde));
