@@ -330,13 +330,9 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
                   marginBottom:8,
                 }}>
                   <span style={{ fontSize:16 }}>{viajePropio ? "✓" : "🚗"}</span>
-                  {viajePropio ? "Viajo por mi cuenta · Activo" : "Viajo por mi cuenta (sin furgoneta)"}
+                  {viajePropio ? "✓ Voy por mi cuenta" : "Voy por mi cuenta"}
                 </button>
-                {!viajePropio && (
-                  <div style={{ fontSize:11, color:"#5A5A9A", textAlign:"center", marginBottom:8 }}>
-                    Sin furgoneta: máx {limiteMaxPrac} prácticas y {limiteDias} días. Activa si vas solo.
-                  </div>
-                )}
+
               </div>
             )}
             <div style={{ display:"flex", gap:8, justifyContent:"center", flexWrap:"wrap" }}>
@@ -570,9 +566,8 @@ export default function AppAlumno() {
       for (const dia of DIAS_S) {
         const modo = modoDia?.[dia] || "franjas";
         if (modo === "especifico" && rangosDia?.[dia]?.length > 0) {
-          // Convertir rangos a franjas por solapamiento
-          const franjasSet = rangosAFranjas(rangosDia[dia]);
-          if (franjasSet.size > 0) franjas_disponibles[dia] = [...franjasSet];
+          // Guardar rangos exactos — el motor los leerá directamente
+          franjas_disponibles[dia] = { _rangos: rangosDia[dia] };
         } else {
           const set = disp[dia];
           if (set instanceof Set && set.size > 0) franjas_disponibles[dia] = [...set];
