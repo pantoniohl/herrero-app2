@@ -691,7 +691,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
                 duracion,
                 tipo: "circulacion",
                 forzado: false,
-                disponDesde: Ve.length > 0 ? Ve[0].desde : null,
+                disponDesde: tramosAlumno.length > 0 ? tramosAlumno[0].desde : null,
               };
               planning[dia].push(entrada);
               getOcup(ocupProf, profKey + "_" + dia).push(hueco);
