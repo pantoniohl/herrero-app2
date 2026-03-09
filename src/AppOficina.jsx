@@ -436,7 +436,11 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
   ];
   for (const alumno of ordenados) {
     const duracion = alumno.permiso === "B" ? DUR_B : DUR_PESADOS;
-    const maxSemanal = alumno.permiso === "B" ? (alumno.maxPracticas || 8) : 2;
+    // maxSemanal: el menor entre el techo del alumno y las prácticas que pidió (si las pidió)
+    const _techoAlumno = alumno.permiso === "B" ? (alumno.maxPracticas || 8) : 2;
+    const maxSemanal = alumno.practicasDeseadas > 0
+      ? Math.min(_techoAlumno, alumno.practicasDeseadas)
+      : _techoAlumno;
     let asignadas = 0;
     let diasAsignados = 0;
     const diasDisponibles = alumno.disponibilidad || {}; // { [dia]: { estado, desde, hasta } }
@@ -1802,9 +1806,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
             if (!val || (Array.isArray(val) && val.length === 0)) return [d, { estado: "no" }];
             // Nuevo formato: array de tramos {desde,hasta}
             if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object" && val[0].desde) {
-              // Cubren todo el día (09:00-21:00) → estado todo; si no, tramos exactos
-              const totalMin = val.reduce((s,t)=>{ const toM=x=>{const[h,m]=x.split(':').map(Number);return h*60+m;}; return s+(toM(t.hasta)-toM(t.desde)); }, 0);
-              if (totalMin >= 720) return [d, { estado: "todo" }]; // ≥12h = todo el día
+              // Tramos exactos — SIEMPRE respetar, nunca convertir a "todo el día"
               return [d, { estado: "tramos", tramos: val }];
             }
             // Retrocompatibilidad: strings de franjas antiguas
@@ -1825,7 +1827,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
         const viajePropio = a.transporte && a.permiso === "B" && pracDeseadasAlumno > 4;
         // Si viaje propio: usar practicas_deseadas como maxPracticas real (no el límite de transporte)
         const maxPracticasEfectivo = viajePropio ? pracDeseadasAlumno : (a.maxPracticas || (a.permiso==="B"?8:2));
-        return { ...a, disponibilidad, viajePropio, maxPracticas: maxPracticasEfectivo };
+        return { ...a, disponibilidad, viajePropio, maxPracticas: maxPracticasEfectivo, practicasDeseadas: pracDeseadasAlumno };
       });
 
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
