@@ -385,7 +385,7 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
   const horaLlegadaTransporte = {}; // { [dia]: { [alumnoId]: min } }
   for (const dia of diasSemana) {
     const alumnosDia = alumnos
-      .filter(a => a.transporte && a.localidad && a.localidad !== "Trujillo")
+      .filter(a => a.transporte && !a.viajePropio && a.localidad && a.localidad !== "Trujillo")
       .map(a => {
         // Hora de práctica candidata: 09:00 por defecto (se ajustará después)
         // Usamos el inicio más temprano de sus tramos ese día
@@ -475,7 +475,8 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
       if (tramosAlumno.length === 0) continue;
 
       // Bloqueo transporte: si el alumno viene de pueblo, no puede empezar antes de su llegada
-      if (alumno.transporte && alumno.localidad && alumno.localidad !== "Trujillo") {
+      // Si viajePropio está activo (campo en alumno o deducido de maxPracticas > 4), no bloquear
+      if (alumno.transporte && !alumno.viajePropio && alumno.localidad && alumno.localidad !== "Trujillo") {
         const llegMin = horaLlegadaTransporte[dia]?.[alumno.id];
         if (llegMin != null) {
           tramosAlumno = tramosAlumno
@@ -1787,6 +1788,7 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
         const disps = await getDisponibilidades(configId);
         (disps || []).forEach(d => {
           dispPorAlumno[d.alumno_id] = d.dias || {};
+          dispPorAlumno[d.alumno_id + "_practicas"] = d.practicas_deseadas || 0;
         });
       }
 
@@ -1805,7 +1807,12 @@ function ModuloPlanning({ cfg, alumnos, configId, planning, setPlanning, sinAsig
           // Sin disponibilidad registrada: disponible todo
           disponibilidad = Object.fromEntries(DIAS_SEMANA.map(d => [d, { estado: "todo" }]));
         }
-        return { ...a, disponibilidad };
+        // viajePropio: si el alumno de transporte B eligió >4 prácticas, va por su cuenta
+        const pracDeseadasAlumno = dispPorAlumno[a.id + "_practicas"] || 0;
+        const viajePropio = a.transporte && a.permiso === "B" && pracDeseadasAlumno > 4;
+        // Si viaje propio: usar practicas_deseadas como maxPracticas real (no el límite de transporte)
+        const maxPracticasEfectivo = viajePropio ? pracDeseadasAlumno : (a.maxPracticas || (a.permiso==="B"?8:2));
+        return { ...a, disponibilidad, viajePropio, maxPracticas: maxPracticasEfectivo };
       });
 
       const res = generarPlanning(cfg, alumnosConDisp, DIAS_SEMANA);
