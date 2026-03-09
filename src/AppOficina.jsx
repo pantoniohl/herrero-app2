@@ -2162,14 +2162,14 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       );
       if (modalEdicion.dispId) {
         // Editar existente
-        await supabase.from("disponibilidad").update({ dias: diasFiltrados }).eq("id", modalEdicion.dispId);
+        await supabase.from("disponibilidad").update({ dias: diasFiltrados, practicas_deseadas: practicasModal }).eq("id", modalEdicion.dispId);
       } else {
         // Crear nueva (introducción manual)
         await supabase.from("disponibilidad").insert({
           alumno_id: modalEdicion.alumnoId,
           config_id: configId,
           dias: diasFiltrados,
-          practicas_deseadas: 2,
+          practicas_deseadas: practicasModal,
           manual: true,
         });
       }
