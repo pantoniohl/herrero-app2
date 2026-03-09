@@ -280,16 +280,11 @@ function jornadaValida(desde, hasta, ocupaciones) {
 }
 
 // ─── Elegir mejor hueco para una práctica ───────────────────
-function elegirHueco(huecos, durMin, ocupaciones, capBloqueo) {
-  const validos = huecos
-    .filter(h => (h.hasta - h.desde) >= durMin);
+function elegirHueco(huecos, durMin) {
+  const validos = huecos.filter(h => (h.hasta - h.desde) >= durMin);
   if (validos.length === 0) return null;
-  // Colocar siempre al FINAL del hueco disponible → apila hacia el cierre de cada franja
-  // Ej: mañana (9-14h): 1er alumno → 13:30, 2º → 12:45, etc. Sin huecos entre prácticas.
-  validos.sort((a, b) => b.hasta - a.hasta); // hueco que termina más tarde primero
-  const h = validos[0];
-  const desde = h.hasta - durMin;
-  return { desde, hasta: h.hasta };
+  validos.sort((a, b) => a.desde - b.desde); // primer hueco disponible
+  return { desde: validos[0].desde, hasta: validos[0].desde + durMin };
 }
 
 // ─── Verificar restricción de pista ─────────────────────────
@@ -555,24 +550,20 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
 
           } else {
             // Módulo B: no necesita vehículo específico
-            // 2ª práctica del día: SIEMPRE contigua a la 1ª (mismo profesor)
+            // 2ª práctica: SIEMPRE contigua a la 1ª (mismo profesor), sin pasar por elegirHueco
             let hueco = null;
             if (asignadasHoy >= 1) {
               const pracAnterior = planning[dia]
                 .filter(p => p.alumnoId === alumno.id && p.profesor === profKey)
                 .sort((a, b) => toMin(b.hasta) - toMin(a.hasta))[0];
               if (pracAnterior) {
-                const inicioContiguo = toMin(pracAnterior.hasta);
-                // Verificar que el profesor tiene hueco libre exactamente en inicioContiguo
-                const libre = tramosComunes.some(t =>
-                  t.desde <= inicioContiguo && t.hasta >= inicioContiguo + duracion
-                );
-                if (!libre) continue; // no hay hueco contiguo con este profesor
-                hueco = { desde: inicioContiguo, hasta: inicioContiguo + duracion };
+                const ic = toMin(pracAnterior.hasta);
+                const libre = tramosComunes.some(t => t.desde <= ic && t.hasta >= ic + duracion);
+                if (!libre) continue;
+                hueco = { desde: ic, hasta: ic + duracion };
               }
             } else {
-              // 1ª práctica: elegir al final del hueco disponible (compacta hacia cierre de franja)
-              hueco = elegirHueco(tramosComunes, duracion, ocupacionesProf, capProf);
+              hueco = elegirHueco(tramosComunes, duracion);
             }
             if (hueco) {
               const entrada = {
