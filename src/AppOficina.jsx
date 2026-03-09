@@ -2266,7 +2266,7 @@ function generarPDFRespuestas(disponibilidades, tokensLocales, alumnos, cfg) {
 }
 
 
-function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cfg }) {
+function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cfg, onGuardado }) {
   const [disponibilidades, setDisponibilidades] = useState([]);
   const [tokensLocales, setTokensLocales] = useState(tokensProp);
   const [cargando, setCargando] = useState(true);
@@ -2374,6 +2374,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       }
       setModalEdicion(null);
       await cargar();
+      if (onGuardado) onGuardado(); // notificar al padre: limpiar planning y refrescar WhatsApp
     } catch(e) { alert("Error guardando: " + e.message); }
     finally { setGuardandoModal(false); }
   };
@@ -2603,7 +2604,7 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
   );
 }
 
-function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
+function ModuloWhatsApp({ alumnos, tokens, setTokens, configId, refreshKey }) {
   const durLabel = (min) => !min ? "" : min < 60 ? min + "min" : Math.floor(min/60) + "h" + (min%60 ? (min%60)+"min" : "");
   const [busqueda, setBusqueda] = useState("");
   const [alumnosRespondieron, setAlumnosRespondieron] = useState(new Set());
@@ -2625,7 +2626,7 @@ function ModuloWhatsApp({ alumnos, tokens, setTokens, configId }) {
     actualizar(); // cargar inmediatamente
     const intervalo = setInterval(actualizar, 15000);
     return () => clearInterval(intervalo);
-  }, [configId]);
+  }, [configId, refreshKey]);
 
   // helper: ha respondido = tiene disponibilidad guardada
   const haRespondido = (alumnoId) => alumnosRespondieron.has(alumnoId);
@@ -3167,7 +3168,8 @@ export default function AppOficina() {
   const [alumnos, setAlumnos] = useState([]);
   const [tokens, setTokens] = useState([]);
     const [planning, setPlanning] = useState(null);
-  const [rutasTransporte, setRutasTransporte] = useState({}); const [sinAsignar, setSinAsignar] = useState([]);
+  const [rutasTransporte, setRutasTransporte] = useState({});
+  const [respuestasKey, setRespuestasKey] = useState(0); // incrementar para forzar recarga en WhatsApp const [sinAsignar, setSinAsignar] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -3255,10 +3257,10 @@ export default function AppOficina() {
       <div style={{ padding:"16px 16px 0" }}>
         {pantalla==="config"      && <ModuloConfig   cfg={cfg} setCfg={setCfg} alumnos={alumnos} configId={configId} setConfigId={setConfigId} tokens={tokens} setTokens={setTokens} onNuevaSemana={handleNuevaSemana} />}
         {pantalla==="alumnos"     && <ModuloAlumnos  alumnos={alumnos} setAlumnos={setAlumnos} />}
-        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} cfg={cfg} />}
+        {pantalla==="respuestas"  && <ModuloRespuestas alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} onGuardado={()=>{ setPlanning(null); setSinAsignar([]); setRespuestasKey(k=>k+1); }} cfg={cfg} />}
         {pantalla==="planning"    && <ModuloPlanning cfg={cfg} alumnos={alumnos} configId={configId} planning={planning} setPlanning={setPlanning} sinAsignar={sinAsignar} setSinAsignar={setSinAsignar} rutasTransporte={rutasTransporte} setRutasTransporte={setRutasTransporte} />}
         {pantalla==="informes"    && <ModuloInformes planning={planning} alumnos={alumnos} cfg={cfg} tokens={tokens} configId={configId} />}
-        {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} />}
+        {pantalla==="whatsapp"    && <ModuloWhatsApp alumnos={alumnos} tokens={tokens} setTokens={setTokens} configId={configId} refreshKey={respuestasKey} />}
       </div>
 
       {/* NAV INFERIOR */}
