@@ -1273,8 +1273,63 @@ function ModuloAlumnos({ alumnos, setAlumnos }) {
     }
   };
 
-  const guardar = (alumno) => {
-    setAlumnos(prev => prev.find(a=>a.id===alumno.id) ? prev.map(a=>a.id===alumno.id?alumno:a) : [...prev,alumno]);
+  const guardar = async (alumno) => {
+    try {
+      const esNuevo = !alumnoEditar; // si no hay alumnoEditar, es alta nueva
+      if (esNuevo) {
+        // INSERT en Supabase y usar el UUID devuelto
+        const payload = {
+          nombre:              alumno.nombre,
+          apellidos:           alumno.apellidos,
+          telefono:            alumno.telefono || "",
+          localidad:           alumno.localidad || "Trujillo",
+          permiso:             alumno.permiso,
+          fase:                alumno.fase || null,
+          activo:              alumno.activo !== false,
+          bono:                alumno.bono || false,
+          bono_restantes:      alumno.bonoRestantes || null,
+          transporte:          alumno.transporte || false,
+          max_practicas_semana: alumno.maxPracticas || (alumno.permiso === "B" ? 8 : 2),
+          profesor_fijo:       alumno.profesorFijo || null,
+          coche_asignado:      alumno.cocheAsignado || null,
+          fecha_alta:          alumno.fechaAlta || new Date().toISOString().slice(0,10),
+        };
+        const { data, error } = await supabase.from("alumnos").insert(payload).select().single();
+        if (error) throw new Error(error.message);
+        const alumnoReal = {
+          ...data,
+          bonoRestantes: data.bono_restantes,
+          profesorFijo:  data.profesor_fijo,
+          cocheAsignado: data.coche_asignado,
+          maxPracticas:  data.max_practicas_semana,
+          fechaAlta:     data.fecha_alta,
+        };
+        setAlumnos(prev => [...prev, alumnoReal]);
+      } else {
+        // UPDATE en Supabase
+        const payload = {
+          nombre:              alumno.nombre,
+          apellidos:           alumno.apellidos,
+          telefono:            alumno.telefono || "",
+          localidad:           alumno.localidad || "Trujillo",
+          permiso:             alumno.permiso,
+          fase:                alumno.fase || null,
+          activo:              alumno.activo !== false,
+          bono:                alumno.bono || false,
+          bono_restantes:      alumno.bonoRestantes || null,
+          transporte:          alumno.transporte || false,
+          max_practicas_semana: alumno.maxPracticas || (alumno.permiso === "B" ? 8 : 2),
+          profesor_fijo:       alumno.profesorFijo || null,
+          coche_asignado:      alumno.cocheAsignado || null,
+        };
+        const { error } = await supabase.from("alumnos").update(payload).eq("id", alumno.id);
+        if (error) throw new Error(error.message);
+        setAlumnos(prev => prev.map(a => a.id === alumno.id ? { ...a, ...alumno } : a));
+      }
+    } catch(err) {
+      alert("Error guardando alumno: " + err.message);
+      return;
+    }
     setModal(null); setAlumnoEditar(null);
   };
 
@@ -2162,14 +2217,14 @@ function ModuloRespuestas({ alumnos, tokens: tokensProp, setTokens, configId, cf
       );
       if (modalEdicion.dispId) {
         // Editar existente
-        await supabase.from("disponibilidad").update({ dias: diasFiltrados, practicas_deseadas: practicasModal }).eq("id", modalEdicion.dispId);
+        await supabase.from("disponibilidad").update({ dias: diasFiltrados }).eq("id", modalEdicion.dispId);
       } else {
         // Crear nueva (introducción manual)
         await supabase.from("disponibilidad").insert({
           alumno_id: modalEdicion.alumnoId,
           config_id: configId,
           dias: diasFiltrados,
-          practicas_deseadas: practicasModal,
+          practicas_deseadas: 2,
           manual: true,
         });
       }
