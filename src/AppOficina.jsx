@@ -395,38 +395,45 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
         let asignado = false;
 
         // ── Prioridad de profesores ──────────────────────────────────────────
-        // Mamen: mínimo calculado según tramos disponibles ese día:
-        //   mañana+tarde disponible = 8h | solo mañana = 5h | solo tarde = 4h
-        //   día con examen = descuenta el bloqueo | no disponible = 0 (sin asignar)
-        // Relleno si no llega con B propios: C circ → C pista (en ese orden)
+        // Objetivo: Mamen y Javi llenen jornada completa (mín 7h/día sin comida)
+        // Orden: B → C circ → C pista. Mamen primero, Javi segundo, Pablo 3 días/sem, Toni puntual.
 
         const mamenConfigHoy = configSemanal.profesores?.["mamen"]?.[dia]
           || configSemanal.profesores?.["mamen"]?.dias?.[dia];
         const mamenDisponibleHoy = mamenConfigHoy && mamenConfigHoy.estado !== "no";
 
-        // Calcular mínimo de Mamen según tramos disponibles hoy
-        let minMamen = 0;
-        if (mamenDisponibleHoy) {
-          const tramosM = tramosDisponibles(mamenConfigHoy);
-          // Descontar bloqueo examen si aplica
-          const tramosMAjust = (!esSemSig && configSemanal.diaExamen === dia)
-            ? tramosM.map(t => ({ desde: Math.max(t.desde, toMin("14:00")), hasta: t.hasta }))
+        const javiConfigHoy = configSemanal.profesores?.["javi"]?.[dia]
+          || configSemanal.profesores?.["javi"]?.dias?.[dia];
+        const javiDisponibleHoy = javiConfigHoy && javiConfigHoy.estado !== "no";
+
+        // Mínimo 7h (420 min) para Mamen y Javi, limitado a lo que pueden dar ese día
+        const MIN_JORNADA = 420;
+        const calcMinProf = (profConfig, esDiaExamen) => {
+          if (!profConfig || profConfig.estado === "no") return 0;
+          const tramos = tramosDisponibles(profConfig);
+          const tramosAjust = esDiaExamen
+            ? tramos.map(t => ({ desde: Math.max(t.desde, toMin("14:00")), hasta: t.hasta }))
               .filter(t => t.hasta > t.desde)
-            : tramosM;
-          // Minutos totales disponibles (descontando pausa comida ~90 min)
-          const dispTotal = tramosMAjust.reduce((s,t) => s + (t.hasta - t.desde), 0);
-          minMamen = Math.max(0, dispTotal - 90); // pausa comida de 1h30
-        }
+            : tramos;
+          const dispTotal = tramosAjust.reduce((s,t) => s + (t.hasta - t.desde), 0);
+          return Math.min(MIN_JORNADA, Math.max(0, dispTotal - 90));
+        };
+        const esDiaExamen = !esSemSig && configSemanal.diaExamen === dia;
+        const minMamen = calcMinProf(mamenConfigHoy, esDiaExamen);
+        const minJavi  = calcMinProf(javiConfigHoy,  esDiaExamen);
 
         const horasMamenHoy = getOcup(ocupProf, "mamen_" + dia)
           .reduce((sum, o) => sum + (o.hasta - o.desde), 0);
-        const mamenNecesitaHoras = mamenDisponibleHoy && horasMamenHoy < minMamen;
+        const horasJaviHoy = getOcup(ocupProf, "javi_" + dia)
+          .reduce((sum, o) => sum + (o.hasta - o.desde), 0);
 
+        const mamenNecesitaHoras = mamenDisponibleHoy && horasMamenHoy < minMamen;
+        const javiNecesitaHoras  = javiDisponibleHoy  && horasJaviHoy  < minJavi;
+
+        // Prioridad siempre: Mamen → Javi → Toni → Pablo (para B y C)
+        // Pablo solo C/C+E y máx 3 días, Toni puntual
         const PRIORIDAD_B       = ["mamen","javi","toni","pablo"];
-        // C: si Mamen necesita horas → Mamen primero; si no → Pablo primero
-        const PRIORIDAD_PESADOS = mamenNecesitaHoras
-          ? ["mamen","pablo","javi","toni"]
-          : ["pablo","mamen","javi","toni"];
+        const PRIORIDAD_PESADOS = ["mamen","javi","pablo","toni"];
 
         const profesoresCandidatos = Object.keys(CAPACIDADES).filter(pk => {
           if (alumno.permiso === "B" && alumno.profesorFijo && pk !== alumno.profesorFijo) return false;
@@ -442,21 +449,24 @@ function generarPlanning(configSemanal, alumnos, diasSemana) {
         });
 
         profesoresCandidatos.sort((a, b) => {
-          if (mamenNecesitaHoras) {
-            if (a === "mamen" && b !== "mamen") return -1;
-            if (b === "mamen" && a !== "mamen") return 1;
+          // Mamen y Javi con prioridad absoluta si necesitan horas para llegar a 7h
+          const aNecesita = (a === "mamen" && mamenNecesitaHoras) || (a === "javi" && javiNecesitaHoras);
+          const bNecesita = (b === "mamen" && mamenNecesitaHoras) || (b === "javi" && javiNecesitaHoras);
+          if (aNecesita && !bNecesita) return -1;
+          if (bNecesita && !aNecesita) return 1;
+          // Entre los dos que necesitan horas: Mamen primero
+          if (aNecesita && bNecesita) {
+            if (a === "mamen") return -1;
+            if (b === "mamen") return 1;
           }
-          if (alumno.permiso === "B") {
-            const pa = PRIORIDAD_B.indexOf(a);
-            const pb = PRIORIDAD_B.indexOf(b);
-            if (pa !== pb) return pa - pb;
-          } else {
-            const pa = PRIORIDAD_PESADOS.indexOf(a);
-            const pb = PRIORIDAD_PESADOS.indexOf(b);
-            if (pa !== pb) return pa - pb;
-          }
-          const ocA = getOcup(ocupProf, a + "_" + dia).length;
-          const ocB = getOcup(ocupProf, b + "_" + dia).length;
+          // Orden base por permiso
+          const prioridad = alumno.permiso === "B" ? PRIORIDAD_B : PRIORIDAD_PESADOS;
+          const pa = prioridad.indexOf(a);
+          const pb = prioridad.indexOf(b);
+          if (pa !== pb) return pa - pb;
+          // Empate: quien tenga más ocupación ya (para no dejar huecos)
+          const ocA = getOcup(ocupProf, a + "_" + dia).reduce((s,o)=>s+(o.hasta-o.desde),0);
+          const ocB = getOcup(ocupProf, b + "_" + dia).reduce((s,o)=>s+(o.hasta-o.desde),0);
           return ocB - ocA;
         });
         for (const profKey of profesoresCandidatos) {
