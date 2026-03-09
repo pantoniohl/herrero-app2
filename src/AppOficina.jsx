@@ -316,7 +316,7 @@ function pistaBloqueada(ocupacionesPista, desde, hasta) {
     - planning: { [dia]: [ { alumnoId, profesor, vehiculo, tipo, desde, hasta, duracion } ] }
     - sinAsignar: [ { alumnoId, motivo } ]
 */
-function generarPlanning(configSemanal, alumnos, diasSemana) {
+export function generarPlanning(configSemanal, alumnos, diasSemana) {
   const planning = Object.fromEntries(diasSemana.map(d => [d, []]));
   const sinAsignar = [];
 
