@@ -555,32 +555,25 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
 
           } else {
             // Módulo B: no necesita vehículo específico
-            // Si es la 2ª práctica del día, DEBE ser contigua a la 1ª con el MISMO profesor
-            let tramosParaB = tramosComunes;
+            // 2ª práctica del día: SIEMPRE contigua a la 1ª (mismo profesor)
+            let hueco = null;
             if (asignadasHoy >= 1) {
-              // Buscar la práctica anterior del mismo alumno+profesor en este día
               const pracAnterior = planning[dia]
                 .filter(p => p.alumnoId === alumno.id && p.profesor === profKey)
-                .sort((a, b) => toMin(b.hasta) - toMin(a.hasta))[0]; // la más reciente
+                .sort((a, b) => toMin(b.hasta) - toMin(a.hasta))[0];
               if (pracAnterior) {
                 const inicioContiguo = toMin(pracAnterior.hasta);
-                // Solo aceptar hueco que empiece exactamente donde terminó la anterior
-                tramosParaB = tramosComunes
-                  .map(t => ({
-                    desde: Math.max(t.desde, inicioContiguo),
-                    hasta: t.hasta,
-                  }))
-                  .filter(t => t.desde === inicioContiguo && (t.hasta - t.desde) >= duracion);
-                // Si no hay hueco contiguo con este profesor, no asignar (sin fallback)
-                if (tramosParaB.length === 0) continue;
+                // Verificar que el profesor tiene hueco libre exactamente en inicioContiguo
+                const libre = tramosComunes.some(t =>
+                  t.desde <= inicioContiguo && t.hasta >= inicioContiguo + duracion
+                );
+                if (!libre) continue; // no hay hueco contiguo con este profesor
+                hueco = { desde: inicioContiguo, hasta: inicioContiguo + duracion };
               }
+            } else {
+              // 1ª práctica: elegir al final del hueco disponible (compacta hacia cierre de franja)
+              hueco = elegirHueco(tramosComunes, duracion, ocupacionesProf, capProf);
             }
-            const hueco = elegirHueco(
-              tramosParaB,
-              duracion,
-              ocupacionesProf,
-              capProf
-            );
             if (hueco) {
               const entrada = {
                 alumnoId: alumno.id,
