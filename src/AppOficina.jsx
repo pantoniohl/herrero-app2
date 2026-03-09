@@ -645,21 +645,28 @@ export function generarPlanning(configSemanal, alumnos, diasSemana) {
         return 5;
       };
 
-      // Agrupar B por alumno (mantener contigüidad): bloques de 2 prácticas del mismo alumno juntas
-      // Para no-B: ordenar por tipo
+      // Agrupar B por alumno (mantener contigüidad)
+      // Para no-B: agrupar por tipo manteniendo el orden de aparición (sin orden fijo)
       const bPorAlumno = {};
-      const noBs = [];
+      const noBsPorTipo = {}; // clave: "permiso_tipo"
+      const ordenTiposAparicion = []; // para mantener orden de aparición de tipos
       for (const p of pracs) {
         if (p.permiso === "B") {
           if (!bPorAlumno[p.alumnoId]) bPorAlumno[p.alumnoId] = [];
           bPorAlumno[p.alumnoId].push(p);
         } else {
-          noBs.push(p);
+          const clave = p.permiso + "_" + p.tipo;
+          if (!noBsPorTipo[clave]) {
+            noBsPorTipo[clave] = [];
+            ordenTiposAparicion.push(clave);
+          }
+          noBsPorTipo[clave].push(p);
         }
       }
       // Bloques B: cada alumno como grupo contiguo
-      const bloquesB = Object.values(bPorAlumno); // array de arrays
-      noBs.sort((a, b) => ordenTipo(a) - ordenTipo(b));
+      const bloquesB = Object.values(bPorAlumno);
+      // No-B: agrupados por tipo en orden de aparición
+      const noBs = ordenTiposAparicion.flatMap(k => noBsPorTipo[k]);
 
       // Re-colocar: primero todos los bloques B, luego los no-B por tipo
       let cursor = 0; // índice en tramosDisp
