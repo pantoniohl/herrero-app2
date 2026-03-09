@@ -161,8 +161,9 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
   const [practicasDeseadas, setPracticasDeseadas] = useState(2);
   const [viajePropio, setViajePropio] = useState(false);
 
-  const esTransporteB = alumno.transporte && alumno.permiso === "B";
-  const limiteDias    = (alumno.transporte && !viajePropio) ? 2 : 5;
+  const tieneTransporte = alumno.transporte === true || alumno.transporte === "true" || alumno.transporte === 1;
+  const esTransporteB = tieneTransporte && alumno.permiso === "B";
+  const limiteDias    = (tieneTransporte && !viajePropio) ? 2 : 5;
   const limiteMaxPrac = (esTransporteB && !viajePropio) ? 4 : (alumno.maxPracticasSemana || 8);
   const diasSel = DIAS_SEMANA.filter(d =>
     modoDia[d] === "franjas" ? disponibilidad[d].size > 0 : rangosDia[d].length > 0
@@ -172,8 +173,16 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
   const setModo = (dia, modo) => {
     setModoDia(prev => ({...prev, [dia]: modo}));
     // limpiar el otro modo al cambiar
-    if (modo === "franjas") setRangosDia(prev => ({...prev, [dia]: []}));
-    else setDisponibilidad(prev => ({...prev, [dia]: new Set()}));
+    if (modo === "franjas") {
+      setRangosDia(prev => ({...prev, [dia]: []}));
+    } else {
+      setDisponibilidad(prev => ({...prev, [dia]: new Set()}));
+      // Añadir un rango por defecto para que el día quede abierto
+      setRangosDia(prev => ({
+        ...prev,
+        [dia]: prev[dia].length > 0 ? prev[dia] : [{ desde:"09:00", hasta:"14:00" }]
+      }));
+    }
   };
 
   const addRango = (dia) => setRangosDia(prev => ({...prev, [dia]: [...prev[dia], {desde:"09:00", hasta:"14:00"}]}));
@@ -234,7 +243,7 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
                   {alumno.fase==="pista"?"🏁 Pista":"🛣️ Circulación"}
                 </span>
               )}
-              {alumno.transporte && <span style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"#D4700A22", color:"#D4700A" }}>🚐 Transporte</span>}
+              {tieneTransporte && <span style={{ fontSize:11, fontWeight:700, padding:"2px 8px", borderRadius:10, background:"#D4700A22", color:"#D4700A" }}>🚐 Transporte</span>}
             </div>
           </div>
         </div>
@@ -328,7 +337,7 @@ function Formulario({ alumno, fechaLimite, semanaDesde, semanaHasta, fechasDias,
         )}
 
         {/* RESTRICCIÓN TRANSPORTE */}
-        {alumno.transporte && (
+        {tieneTransporte && (
           <div style={{ background:"#EEF3FB", border:"1.5px solid #1A3A6B33", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#1A3A6B", lineHeight:1.6 }}>
             ℹ️ Con transporte de la autoescuela puedes seleccionar un máximo de <strong>{limiteDias} días</strong>.
           </div>
