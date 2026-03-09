@@ -284,20 +284,12 @@ function elegirHueco(huecos, durMin, ocupaciones, capBloqueo) {
   const validos = huecos
     .filter(h => (h.hasta - h.desde) >= durMin);
   if (validos.length === 0) return null;
-  if (ocupaciones.length === 0) {
-    // Primera práctica del día: primer hueco disponible (más temprano)
-    validos.sort((a, b) => a.desde - b.desde);
-    return { desde: validos[0].desde, hasta: validos[0].desde + durMin };
-  }
-  // Hay ocupaciones: elegir el hueco más adyacente (menor distancia al bloque más cercano)
-  // Esto compacta la jornada: cada alumno va pegado al anterior o al siguiente bloque
-  validos.sort((a, b) => {
-    const sA = scoreAdyacencia(a, ocupaciones, capBloqueo);
-    const sB = scoreAdyacencia(b, ocupaciones, capBloqueo);
-    if (sA !== sB) return sA - sB;
-    return a.desde - b.desde; // empate: más temprano
-  });
-  return { desde: validos[0].desde, hasta: validos[0].desde + durMin };
+  // Colocar siempre al FINAL del hueco disponible → apila hacia el cierre de cada franja
+  // Ej: mañana (9-14h): 1er alumno → 13:30, 2º → 12:45, etc. Sin huecos entre prácticas.
+  validos.sort((a, b) => b.hasta - a.hasta); // hueco que termina más tarde primero
+  const h = validos[0];
+  const desde = h.hasta - durMin;
+  return { desde, hasta: h.hasta };
 }
 
 // ─── Verificar restricción de pista ─────────────────────────
