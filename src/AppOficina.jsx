@@ -3173,9 +3173,10 @@ export default function AppOficina() {
   const [configId, setConfigId] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
   const [tokens, setTokens] = useState([]);
-    const [planning, setPlanning] = useState(null);
+  const [planning, setPlanning] = useState(null);
   const [rutasTransporte, setRutasTransporte] = useState({});
-  const [respuestasKey, setRespuestasKey] = useState(0); // incrementar para forzar recarga en WhatsApp const [sinAsignar, setSinAsignar] = useState([]);
+  const [respuestasKey, setRespuestasKey] = useState(0); // incrementar para forzar recarga en WhatsApp
+  const [sinAsignar, setSinAsignar] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
